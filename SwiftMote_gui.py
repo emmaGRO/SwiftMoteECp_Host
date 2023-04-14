@@ -114,8 +114,8 @@ class App(tk.Tk):
                                                     pbtn.state(["selected", "!alternate"])
                                                     titration_lst[pbtn] = col
                                                     pbtn.pack(side=tk.TOP, anchor="nw")
-                                    if test.type == "Lovric":
-                                        tk.Label(master=Lovric_frame, text="Lovric parameters", font=font1).pack(side=tk.TOP)
+                                    if test.type == "CV":
+                                        tk.Label(master=Lovric_frame, text="Cyclic voltammetry parameters", font=font1).pack(side=tk.TOP)
                                         if not test.get_df().empty:
                                             for col in test.get_df().columns:
                                                 if col not in lovric_lst.keys():
@@ -123,8 +123,8 @@ class App(tk.Tk):
                                                     pbtn.state(["selected", "!alternate"])
                                                     lovric_lst[pbtn] = col
                                                     pbtn.pack(side=tk.TOP, anchor="nw")
-                                    if test.type == "Voltammogram":
-                                        tk.Label(master=volta_frame, text="Voltammogram parameters", font=font1).pack(side=tk.TOP)
+                                    if test.type == "SWV":
+                                        tk.Label(master=volta_frame, text="Square wave voltammetry  parameters", font=font1).pack(side=tk.TOP)
                                         if not test.get_df().empty:
                                             for col in test.get_df().columns:
                                                 if col not in volta_lst.keys():
@@ -176,7 +176,7 @@ class App(tk.Tk):
                                                     data.rename(columns={p_name: f'{p_name}_{e_name}_{frequency}hz'}, inplace=True)
                                                     titration_df = pd.concat([titration_df, data], axis=1)
 
-                                    elif test_type == "Lovric":
+                                    elif test.type == "CV":
                                         if not test.get_df().empty:
                                             df = test.get_df()
                                             charge = df['peak_current'] / df["frequency"]
@@ -192,7 +192,7 @@ class App(tk.Tk):
                                                     pd.concat(data,charge)
                                                     lovric_df = pd.concat([lovric_df, data], axis=1)
 
-                                    elif test.type == "Voltammogram":
+                                    elif test.type == "SWV":
                                         if not test.get_df().empty:
                                             df = test.get_df()
                                             frequency = list(df["frequency"])[0]
@@ -207,7 +207,7 @@ class App(tk.Tk):
                                     else:
                                         self.print(f"test type {test.type} doen't exist")
                                     try:
-                                        print(f"{e_name}_{frequency} has been saved")
+                                        print(f"{test.type} for {e_name}_{frequency} has been saved")
                                     except Exception:
                                         pass
                     try:
@@ -256,7 +256,7 @@ class App(tk.Tk):
             process_CH_File(self, self.data_path, "Titration")
 
         def on_button_process_CH_Experiment():
-            process_CH_File(self, self.data_path, "Voltammogram")
+            process_CH_File(self, self.data_path, "SWV")
 
         def on_button_set_output_path():
             try:
@@ -338,7 +338,6 @@ class App(tk.Tk):
         # initialize the right part of the GUI
         self.frameGraph = tk.Frame(master=self, highlightbackground="black", highlightthickness=1)  # div
         self.plots = Plot(master=self,frame = self.frameGraph)
-        # self.init_plots(master=self.frameGraph)
 
         # Initialize the left part of the GUI
         self.frameControls = tk.Frame(master=self, highlightbackground="black", highlightthickness=1)  # div
@@ -361,262 +360,6 @@ class App(tk.Tk):
         for path in dir_list:
             if not os.path.exists(path):
                 os.makedirs(path)
-
-    # def init_plots(self, master):
-    #     """Initializes plots
-    #     param master: reference to parent object
-    #     """
-    #     self.plots.min_pt = 10000
-    #     self.plots.max_pt = -10000
-    #
-    #     plt.rcParams['axes.grid'] = True  # enables all grid lines globally
-    #
-    #     self.fig = plt.figure(dpi=100)
-    #
-    #     self.subplots = {"rt concentration": self.fig.add_subplot(2, 2, 4), "calibration": self.fig.add_subplot(2, 2, 3), "rt Peaks": self.fig.add_subplot(2, 2, 2),
-    #                      "Voltammogram": self.fig.add_subplot(2, 2, 1)}
-    #
-    #     self.subplots["Gain"] = self.subplots["Voltammogram"].twinx()
-    #
-    #     self.plots.rt_concentration.set_xlabel("Time")
-    #     self.plots.rt_concentration.set_ylabel("Concentration (mol/L)")
-    #     self.subplots["calibration"].set_xlabel("Concentration (mol/L)")
-    #     self.subplots["calibration"].set_ylabel("Gain (%)")
-    #     self.subplots["rt Peaks"].set_xlabel("Time (h)")
-    #     self.subplots["rt Peaks"].set_ylabel("Peak Voltage(mV)")  # Battery/signal strength can be also on this plot
-    #     self.subplots["Voltammogram"].set_xlabel("Stimulus (mV)")
-    #     self.subplots["Voltammogram"].set_ylabel("Current (mA)", color='g')  # Filtered current is on the same plot
-    #     self.subplots["Gain"].set_ylabel("Normalized gain (%)", color='b')
-    #
-    #     self.plots.rt_concentration.get_xaxis().set_major_formatter(matplotlib.dates.DateFormatter('%Y-%m-%d %H:%M:%S', tz=tz.gettz('America/Montreal')))
-    #     self.plots.rt_concentration.get_xaxis().set_major_locator(matplotlib.dates.AutoDateLocator())
-    #     self.plots.rt_concentration.get_xaxis().set_minor_locator(matplotlib.ticker.AutoMinorLocator())
-    #
-    #     self.subplots["calibration"].get_yaxis().set_major_locator(matplotlib.ticker.AutoLocator())
-    #     self.subplots["calibration"].get_yaxis().set_minor_locator(matplotlib.ticker.AutoMinorLocator())
-    #     self.subplots["calibration"].get_xaxis().set_major_locator(matplotlib.ticker.AutoLocator())
-    #     self.subplots["calibration"].get_xaxis().set_minor_locator(matplotlib.ticker.AutoMinorLocator())
-    #
-    #     self.subplots["rt Peaks"].get_xaxis().set_major_formatter(matplotlib.dates.DateFormatter('', tz=tz.gettz('America/Montreal')))
-    #     self.subplots["rt Peaks"].get_xaxis().set_major_locator(matplotlib.dates.AutoDateLocator())
-    #     self.subplots["rt Peaks"].get_xaxis().set_minor_locator(matplotlib.ticker.AutoMinorLocator())
-    #     self.subplots["rt Peaks"].get_yaxis().set_major_locator(matplotlib.ticker.AutoLocator())
-    #     self.subplots["rt Peaks"].get_yaxis().set_minor_locator(matplotlib.ticker.AutoMinorLocator())
-    #
-    #     self.subplots["Voltammogram"].get_xaxis().set_major_locator(matplotlib.ticker.AutoLocator())
-    #     self.subplots["Voltammogram"].get_xaxis().set_minor_locator(matplotlib.ticker.AutoMinorLocator())
-    #     self.subplots["Voltammogram"].get_yaxis().set_major_locator(matplotlib.ticker.AutoLocator())
-    #     self.subplots["Voltammogram"].get_yaxis().set_minor_locator(matplotlib.ticker.AutoMinorLocator())
-    #
-    #     plt.setp(self.plots.rt_concentration.get_xticklabels(), rotation=45, horizontalalignment='right')
-    #     plt.setp(self.subplots["rt Peaks"].get_xticklabels(), rotation=45, horizontalalignment='right')
-    #
-    #     self.lines = {"rt Peaks": self.subplots["rt Peaks"].plot([], [], '-', color="b")[0],
-    #                   "rt Peaks max": self.subplots["rt Peaks"].plot([], [], '-', color="c")[0],
-    #                   "rt Peaks min": self.subplots["rt Peaks"].plot([], [], '-', color="c")[0],
-    #                   "current rt Peak": self.subplots["rt Peaks"].plot([], [], '-', color="r")[0],
-    #                   "raw_data": self.subplots["Voltammogram"].plot([], [], '-', color='g')[0],
-    #                   "baseline": self.subplots["Voltammogram"].plot([], [], '-', color='c')[0],
-    #                   "Gain": self.subplots["Gain"].plot([], [], '-', color='b')[0],
-    #                   "PeakX": self.subplots["Gain"].plot([], [], '-', color='r')[0],
-    #                   "PeakY": self.subplots["Gain"].plot([], [], '-', color='r')[0],
-    #                   "calibration": self.subplots["calibration"].semilogx([], [], '-', color='b', label="titration curve")[0],
-    #                   "Hillfit": self.subplots["calibration"].semilogx([], [], '-', color='r', label="Hill fit")[0],
-    #                   "Hill_lims": self.subplots["calibration"].semilogx([], [], 'ro', color='r', label="Hill limits")[0],
-    #                   "rt concentration": self.plots.rt_concentration.semilogy([], [], '-')[0]}
-    #
-    #     frame_plots = tk.Frame(master=master)
-    #     frame_controls = tk.Frame(master=master)
-    #     frame_slider = tk.Frame(master=frame_controls)
-    #     frame_toolbar = tk.Frame(master=frame_controls)
-    #
-    #     self.canvas = FigureCanvasTkAgg(self.fig, master=frame_plots)  # A tk.DrawingArea.
-    #     self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-    #     self.toolbar = NavigationToolbar2Tk(canvas=self.canvas, window=frame_toolbar, pack_toolbar=False)
-    #
-    #     # remove some buttons at the bottom of the plot part of the window
-    #     self.toolbar.toolitems = (('Pan', 'Left button pans, Right button zooms\nx/y fixes axis, CTRL fixes aspect', 'move', 'pan'),
-    #                               ('Zoom', 'Zoom to rectangle\nx/y fixes axis', 'zoom_to_rect', 'zoom'),
-    #                               ('Save', 'Save the figure', 'filesave', 'save_figure'))
-    #
-    #     # Reinitialize the toolbar to apply button changes. This is a bit of a hack. Change if there is a better way.
-    #     self.toolbar.__init__(canvas=self.canvas,
-    #                           window=frame_toolbar,
-    #                           pack_toolbar=False
-    #                           )
-    #     self.toolbar.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=5)
-    #
-    #     self.cursors_v = {0: self.plots.rt_concentration.axvline(x=0, color='b'),
-    #                       1: self.subplots["calibration"].axvline(x=0, color='b'),
-    #                       2: self.subplots["rt Peaks"].axvline(x=0, color='b'),
-    #                       3: self.subplots["Voltammogram"].axvline(x=0, color='b'),
-    #                       'datapoint_select_x_0': self.plots.rt_concentration.axvline(x=0, color='k'),
-    #                       'datapoint_select_x_2': self.subplots["rt Peaks"].axvline(x=0, color='k'),
-    #                       'peak_voltage_3': self.subplots["Voltammogram"].axvline(x=0, color='r'),
-    #                       'peak_voltage_boundary_1_3': self.subplots["Voltammogram"].axvline(x=0, color='k'),
-    #                       'peak_voltage_boundary_2_3': self.subplots["Voltammogram"].axvline(x=0, color='k')}  # define vertical lines of the cursors
-    #
-    #     self.cursors_h = {0: self.plots.rt_concentration.axhline(y=0, color='b'),
-    #                       1: self.subplots["calibration"].axhline(y=0, color='b'),
-    #                       2: self.subplots["rt Peaks"].axhline(y=0, color='b'),
-    #                       3: self.subplots["Voltammogram"].axhline(y=0, color='b'),
-    #                       'datapoint_select_y_0': self.plots.rt_concentration.axhline(y=0, color='k'),
-    #                       'datapoint_select_y_1': self.subplots["calibration"].axhline(y=0, color='k'),
-    #                       'peak_current_3': self.subplots["Voltammogram"].axhline(y=0, color='r')}  # define horizontal lines of the cursors
-    #     # Turning cursors off
-    #     for v_line in self.cursors_v.items():
-    #         v_line[1].set_visible(False)
-    #     for h_line in self.cursors_h.items():
-    #         h_line[1].set_visible(False)
-    #     self.datapoint_is_fixed = False
-    #     self.datapoint_coursors_are_visible = False  # speed optimization
-    #     self.toggle_cursor = False
-    #
-    #     ###### voltammogram slider init
-    #
-    #     # def onmove(event):
-    #     #     """This function is called whenever cursor is moved on the plot part of the window"""
-    #     #
-    #     #     def update_selected_datapoint():
-    #     #         # the closest element in sorted list of time in float format (number of days since 1970.01.01)
-    #     #         if self.chkBtn_show_latest_voltammogram_var.get():
-    #     #             self.cursors_v['datapoint_select_x_0'].set_visible(False)
-    #     #             self.cursors_v['datapoint_select_x_2'].set_visible(False)
-    #     #             self.cursors_h['datapoint_select_y_0'].set_visible(False)
-    #     #             self.cursors_h['datapoint_select_y_1'].set_visible(False)
-    #     #             self.datapoint_is_fixed = False
-    #     #             self.datapoint_select_N = -1
-    #     #         else:
-    #     #             if not self.datapoint_is_fixed:
-    #     #                 self.cursors_v['datapoint_select_x_0'].set_visible(True)
-    #     #                 self.cursors_v['datapoint_select_x_2'].set_visible(True)
-    #     #                 self.cursors_h['datapoint_select_y_0'].set_visible(True)
-    #     #                 self.cursors_h['datapoint_select_y_1'].set_visible(True)
-    #     #                 self.datapoint_select_N = get_closest_index_in_series(value=event.xdata,
-    #     #                                                                       sorted_series=self.curr_Titration_df.get_df_data(name)['time']
-    #     #                                                                       )
-    #     #                 datapoint_select_X = self.curr_Titration_df.get_df_data(name)['time'].iloc[self.datapoint_select_N]
-    #     #                 datapoint_select_Y = self.curr_Titration_df.get_df_data(name)['concentration'].iloc[self.datapoint_select_N]
-    #     #
-    #     #                 self.cursors_v['datapoint_select_x_0'].set_data(
-    #     #                     [datapoint_select_X, datapoint_select_X],
-    #     #                     [0, 1])
-    #     #                 self.cursors_v['datapoint_select_x_2'].set_data(
-    #     #                     [datapoint_select_X, datapoint_select_X],
-    #     #                     [0, 1])
-    #     #
-    #     #                 self.cursors_h['datapoint_select_y_0'].set_data([0, 1],
-    #     #                                                                 [datapoint_select_Y,
-    #     #                                                                  datapoint_select_Y])
-    #     #                 self.cursors_h['datapoint_select_y_1'].set_data([0, 1],
-    #     #                                                                 [datapoint_select_Y,
-    #     #                                                                  datapoint_select_Y])
-    #     #
-    #     #         self.to_update_plots = True  # To update voltammogram plot
-    #     #
-    #     #     try:
-    #     #         if self.toggle_cursor:
-    #     #             if event.inaxes is not None and self.sender_SWV in self.curr_Titration_df.get_df_data(name):
-    #     #                 # self.print(event.__dict__)
-    #     #                 if not self.datapoint_coursors_are_visible:
-    #     #                     for i in range(4):
-    #     #                         self.cursors_v[i].set_visible(True)
-    #     #                         self.cursors_h[i].set_visible(True)
-    #     #                     self.datapoint_coursors_are_visible = True
-    #     #
-    #     #                 if event.inaxes is self.plots.rt_concentration:
-    #     #                     self.cursors_v[0].set_data([event.xdata, event.xdata], [0, 1])
-    #     #                     self.cursors_h[0].set_data([0, 1], [event.ydata, event.ydata])
-    #     #
-    #     #                     # this allows updating cursor on other subplots
-    #     #                     self.cursors_h[1].set_data([0, 1], [event.ydata, event.ydata])
-    #     #                     self.cursors_v[2].set_data([event.xdata, event.xdata], [0, 1])
-    #     #
-    #     #                     update_selected_datapoint()
-    #     #
-    #     #                 elif event.inaxes is self.subplots["calibration"]:
-    #     #                     self.cursors_v[1].set_data([event.xdata, event.xdata], [0, 1])
-    #     #                     self.cursors_h[1].set_data([0, 1], [event.ydata, event.ydata])
-    #     #
-    #     #                     self.cursors_h[0].set_data([0, 1], [event.ydata, event.ydata])
-    #     #                 elif event.inaxes is self.subplots["rt Peaks"]:
-    #     #                     self.cursors_v[2].set_data([event.xdata, event.xdata], [0, 1])
-    #     #                     self.cursors_h[2].set_data([0, 1], [event.ydata, event.ydata])
-    #     #
-    #     #                     self.cursors_v[0].set_data([event.xdata, event.xdata], [0, 1])
-    #     #
-    #     #                     update_selected_datapoint()
-    #     #                 elif event.inaxes is self.subplots["Voltammogram"]:
-    #     #                     self.cursors_v[3].set_data([event.xdata, event.xdata], [0, 1])
-    #     #                     self.cursors_h[3].set_data([0, 1], [event.ydata, event.ydata])
-    #     #             else:  # hide if mouse cursor is in area between axis
-    #     #                 if self.datapoint_coursors_are_visible:
-    #     #                     for i in range(4):
-    #     #                         self.cursors_v[i].set_visible(False)
-    #     #                         self.cursors_h[i].set_visible(False)
-    #     #                     self.datapoint_coursors_are_visible = False
-    #     #             self.canvas.draw()
-    #     #         else:
-    #     #             for i in range(4):
-    #     #                 self.cursors_v[i].set_visible(False)
-    #     #                 self.cursors_h[i].set_visible(False)
-    #     #             self.cursors_v['datapoint_select_x_0'].set_visible(False)
-    #     #             self.cursors_v['datapoint_select_x_2'].set_visible(False)
-    #     #             self.cursors_v['peak_voltage_3'].set_visible(False)
-    #     #             self.cursors_v['peak_voltage_boundary_1_3'].set_visible(False)
-    #     #             self.cursors_v['peak_voltage_boundary_2_3'].set_visible(False)
-    #     #             self.cursors_h['datapoint_select_y_0'].set_visible(False)
-    #     #             self.cursors_h['datapoint_select_y_1'].set_visible(False)
-    #     #             self.cursors_h['peak_current_3'].set_visible(False)
-    #     #
-    #     #     except OSError:
-    #     #         pass  # No data to display, not an error
-    #     #     except Exception as e:
-    #     #         self.print(e)
-    #     #         debug()
-    #     #
-    #     def onclick(event):
-    #         try:
-    #             if event.inaxes is not None:
-    #                 if event.inaxes is self.subplots["calibration"]:
-    #                     if self.titration_df is not None:
-    #                         x = event.xdata
-    #                         concentrations = (self.lines["calibration"].get_data())[0]
-    #                         mid_val = np.median(concentrations)
-    #                         minimum = {_conc: abs(_conc - x) for _conc in concentrations}
-    #                         values = list(minimum.values())
-    #                         min_val = np.min(list(minimum.values()))
-    #                         conc_ = list(minimum.keys())[values.index(min_val)]
-    #                         if x <= mid_val:
-    #                             self.plots.min_pt = conc_
-    #                         else:
-    #                             self.plots.max_pt = conc_
-    #                     self.update_titration_graph = True
-    #                     self.to_update_plots = True
-    #         except Exception as e:
-    #             debug()
-    #
-    #     # self.canvas.mpl_connect('motion_notify_event', onmove)
-    #     self.canvas.mpl_connect('button_press_event', onclick)
-    #
-    #     def apply_tight_layout(event: tk.Event):
-    #         """when resize the whole window, the plot part of the window is resized """
-    #         try:
-    #             if str(event.widget) == ".!frame.!frame.!canvas":
-    #                 self.fig.tight_layout()
-    #         except Exception as e:
-    #             self.print(e)
-    #             pass
-    #
-    #     self.bind("<Configure>", apply_tight_layout)  # resize plots when window size changes, "Configure" comes from tk
-    #
-    #     frame_plots.pack(side=tk.TOP, fill=tk.BOTH, expand=True, anchor='center')
-    #     frame_controls.pack(side=tk.TOP, fill=tk.BOTH, expand=False, anchor='center')
-    #     frame_controls.grid_columnconfigure(0, weight=1, uniform="group1")
-    #     frame_controls.grid_columnconfigure(1, weight=1, uniform="group1")
-    #     frame_controls.grid_rowconfigure(0, weight=1)
-    #     frame_toolbar.grid(row=0, column=0, sticky="nsew", rowspan=2)
-    #     frame_slider.grid(row=0, column=1, sticky="ns")
 
     def init_controls(self, master):
 
@@ -919,18 +662,18 @@ class App(tk.Tk):
             Run_test_btn.grid(row=index, columnspan=2, sticky="nesw")
 
         create_titration_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create Titration", command=lambda: Create_titration())
-        create_Lovric_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create Lovric", command=lambda: Create_Lovric())
-        create_Volta_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create Volt.", command=lambda: Create_Volta())
+        create_Lovric_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create CV", command=lambda: Create_CV())
+        create_Volta_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create SWV", command=lambda: Create_SWV())
         create_titration_btn.grid(row=0, column=0, sticky="nesw")
         create_Lovric_btn.grid(row=0, column=1, sticky="nesw")
         create_Volta_btn.grid(row=0, column=2, sticky="nesw")
 
         def Create_titration():
             Update_test_variable_frame(self.current_electrode.get_tests(self.Experiment_cBox.get())["Titration"])
-        def Create_Lovric():
-            Update_test_variable_frame(self.current_electrode.get_tests(self.Experiment_cBox.get())["Lovric"])
-        def Create_Volta():
-            Update_test_variable_frame(self.current_electrode.get_tests(self.Experiment_cBox.get())["Voltammogram"])
+        def Create_CV():
+            Update_test_variable_frame(self.current_electrode.get_tests(self.Experiment_cBox.get())["CV"])
+        def Create_SWV():
+            Update_test_variable_frame(self.current_electrode.get_tests(self.Experiment_cBox.get())["SWV"])
         def run_test(test:Test):
             param = dict([(p[0], p[1].get()) for p in self.test_params.items()])
             test.update_param(param)
@@ -1117,12 +860,12 @@ class App(tk.Tk):
                 ######################################## Titration Graph ###################################################
                 if self.titration_df is not None:
                     if self.update_titration_graph:
-                        normalized_gain = []
-                        for i in range(len(self.titration_df['raw_voltages'].iloc[:])):
-                            normalized_gain.append(list(np.polyval(self.titration_df['normalized_gain'].iloc[i], self.titration_df['raw_voltages'].iloc[i])))
-
                         concentration = list(self.titration_df['concentration'])
-                        max_gain = [max(gain) for gain in normalized_gain]
+                        max_gain = []
+                        for i in range(len(self.titration_df['raw_voltages'].iloc[:])):
+                            normalized_gain = list(np.polyval(self.titration_df['normalized_gain'].iloc[i], self.titration_df['raw_voltages'].iloc[i]))
+                            max_gain.append(np.max(normalized_gain))
+
                         if self.isHill:
                             if concentration[concentration.index(self.plots.min_pt)] < concentration[concentration.index(self.plots.max_pt)]:
                                 self.hf = HillFit(concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1],
@@ -1146,19 +889,18 @@ class App(tk.Tk):
                             self.linear_coefs = np.polyfit(concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1],max_gain[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1],1)
                             fit_for_r2 = list(np.polyval(self.linear_coefs, concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1]))
                             r_2 = r2_score(max_gain[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1], fit_for_r2)
-                            fit = list(np.polyval(self.linear_coefs, concentration))
                             self.plots.titration_data["titration"].set_data(concentration, max_gain)
                             self.plots.titration_data["fit"].set_data(concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1], fit_for_r2)
                             self.plots.titration_data["fit"].set_label(f"$R^2$={r_2:.3},a={self.linear_coefs[0]:.3}, b ={self.linear_coefs[1]:.3E}")
                             self.plots.titration_data["lims"].set_data([self.plots.min_pt, self.plots.max_pt],[max_gain[concentration.index(self.plots.min_pt)], max_gain[concentration.index(self.plots.max_pt)]])
                             self.plots.titration_data["lims"].set_label(f"Linear limits")
 
-                        max_gain = np.max([np.max(gain) for gain in normalized_gain])
-                        min_gain = np.min([np.min(gain) for gain in normalized_gain])
+                        max_x = np.max(max_gain)
+                        min_x = np.min(max_gain)
                         max_concentration = np.max(concentration)
                         min_concentration = np.min(concentration)
 
-                        self.plots.titration.set_ylim(min_gain - abs(min_gain / 3), max_gain + abs(min_gain / 3))
+                        self.plots.titration.set_ylim(min_x - abs(min_x / 3), max_x + abs(min_x / 3))
                         self.plots.titration.set_xlim(min_concentration - abs(min_concentration / 3), max_concentration + abs(min_concentration / 3))
                         self.plots.titration.legend().set_visible(True)
                 else:
@@ -1244,37 +986,67 @@ class App(tk.Tk):
                                                                   self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][-1])
 
                         ########################################## rt Concentration ##########################################
-                        if self.test_cBox.get() != 'Lovric':
+                        if self.test_cBox.get() != 'CV':
                             try:
-                                normalized_gain = []
-                                for i in range(len(self.raw_data_df['raw_voltages'].iloc[:])):
-                                    normalized_gain.append(list(np.polyval(self.raw_data_df['normalized_gain'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i])))
-
-                                maximum_gain = [np.max(gain) for gain in normalized_gain]  # normalisation with calibration curve
                                 real_concentration = []
                                 _t = []
-                                if self.isHill:
-                                    top, bottom, ec50, nH = self.hf.params
-                                    for i in range(len(maximum_gain)):
-                                        max_gain = maximum_gain[i]
-                                        if bottom <= max_gain <= top:
-                                            if not np.isnan(ec50 * (((bottom - max_gain) / (max_gain - top)) ** (1 / nH))):
-                                                real_concentration.append(ec50 * (((bottom - max_gain) / (max_gain - top)) ** (1 / nH)))
+                                for i in range(len(self.raw_data_df['raw_voltages'].iloc[:])):
+                                    normalized_gain = list(np.polyval(self.raw_data_df['normalized_gain'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i]))
+                                    maximum_gain = np.max(normalized_gain)
+
+                                    if self.isHill:
+                                        top, bottom, ec50, nH = self.hf.params
+                                        if bottom <= maximum_gain <= top:
+                                            if not np.isnan(ec50 * (((bottom - maximum_gain) / (maximum_gain - top)) ** (1 / nH))):
+                                                real_concentration.append(ec50 * (((bottom - maximum_gain) / (maximum_gain - top)) ** (1 / nH)))
                                                 _t.append(_time[i])
-                                else:
-                                    for i in range(len(maximum_gain)):
-                                        max_gain = maximum_gain[i]
-                                        real_concentration.append(np.polyval(self.linear_coefs,max_gain))
+                                    else:
+                                        c = (maximum_gain - self.linear_coefs[1])/self.linear_coefs[0]
+                                        real_concentration.append(c)
                                         _t.append(_time[i])
+                                    if self.test_cBox.get() == 'SWV':
+                                        self.raw_data_df['concentration'].iloc[i] = real_concentration[-1]
 
                                 if len(real_concentration) > 0:
                                     self.plots.rt_concentration.set_ylim(min(real_concentration), max(real_concentration))
                                     self.plots.rt_concentration.set_xlim(min(_t), max(_t))
                                     self.plots.rt_peak.set_xlim(min(_t), max(_t))
                                     self.plots.rt_concentration_data["rt concentration"].set_data(_t, real_concentration)
+
                             except Exception:
                                 debug()
                                 pass
+
+                            # if self.test_cBox.get() != 'CV':
+                            #     try:
+                            #         normalized_gain = []
+                            #         for i in range(len(self.raw_data_df['raw_voltages'].iloc[:])):
+                            #             normalized_gain.append(list(np.polyval(self.raw_data_df['normalized_gain'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i])))
+                            #         maximum_gain = [np.max(gain) for gain in normalized_gain]
+                            #         real_concentration = []
+                            #         _t = []
+                            #         if self.isHill:
+                            #             top, bottom, ec50, nH = self.hf.params
+                            #             for i in range(len(maximum_gain)):
+                            #                 max_gain = maximum_gain[i]
+                            #                 if bottom <= max_gain <= top:
+                            #                     if not np.isnan(ec50 * (((bottom - max_gain) / (max_gain - top)) ** (1 / nH))):
+                            #                         real_concentration.append(ec50 * (((bottom - max_gain) / (max_gain - top)) ** (1 / nH)))
+                            #                         _t.append(_time[i])
+                            #         else:
+                            #             for i in range(len(maximum_gain)):
+                            #                 max_gain = maximum_gain[i]
+                            #                 real_concentration.append(np.polyval(self.linear_coefs, max_gain))
+                            #                 _t.append(_time[i])
+                            #
+                            #         if len(real_concentration) > 0:
+                            #             self.plots.rt_concentration.set_ylim(min(real_concentration), max(real_concentration))
+                            #             self.plots.rt_concentration.set_xlim(min(_t), max(_t))
+                            #             self.plots.rt_peak.set_xlim(min(_t), max(_t))
+                            #             self.plots.rt_concentration_data["rt concentration"].set_data(_t, real_concentration)
+                            #     except Exception:
+                            #         debug()
+                            #         pass
                 self.update_titration_graph = False
                 self.update_raw_data_graph = False
                 self.plots.fig.tight_layout()

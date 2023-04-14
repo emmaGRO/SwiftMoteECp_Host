@@ -9,8 +9,8 @@ class Electrode:
 
     def create_experiment(self,experiment_name:str):
         self.experiments[experiment_name] = {"Titration": Titration(),
-                                             "Lovric": Lovric(),
-                                             "Voltammogram":Voltammogram()}
+                                             "CV": CV(),
+                                             "SWV":SWV()}
     def get_experiments(self) -> list:
         return list(self.experiments.keys())
 

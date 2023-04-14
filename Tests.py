@@ -116,9 +116,9 @@ class Titration(Test):
         except Exception as e:
             return e
 
-class Lovric(Test):
+class CV(Test):
     def __init__(self):
-        super(Lovric,self).__init__("Lovric")
+        super(CV,self).__init__("CV")
         self.parameters.update({"Frequency":100})
         self.parameters.update({"vertex1":0})
         self.parameters.update({"vertex2":200})
@@ -130,8 +130,8 @@ class Lovric(Test):
         dt = float(dt.timestamp() / 86400)
         ser = serial.Serial(port=comport, baudrate=baudrate)
         ser.read_all()
-        data = "SWV,"
-        print(f"experiment data:")
+        data = "CV,"
+        print(f"CV data:")
         for param, value in self.parameters.items():
             data = data + f"{param}:{value},"
             print(f"{param}:{value},")
@@ -159,9 +159,9 @@ class Lovric(Test):
                 return debug()
         return self.add_result(_index, dt, _voltage, _current, self.parameters["Frequency"])
 
-class Voltammogram(Test):
+class SWV(Test):
     def __init__(self):
-        super(Voltammogram, self).__init__("Voltammogram")
+        super(SWV, self).__init__("SWV")
         self.parameters.update({"Frequency": 25})
         self.parameters.update({"Amplitude": 50})
 
@@ -172,7 +172,7 @@ class Voltammogram(Test):
         ser = serial.Serial(port=comport, baudrate=baudrate)
         ser.read_all()
         data = "SWV,"
-        print(f"Voltammogram data:")
+        print(f"SWV data:")
         for param, value in self.parameters.items():
             data = data + f"{param}:{value},"
             print(f"{param}:{value},")
