@@ -1,0 +1,15 @@
+bleak~=0.14.3
+bleak-winrt~=1.1.1
+matplotlib~=3.5.2
+pandas~=1.4.2
+numpy~=1.22.4
+nest_asyncio~=1.5.5
+
+future~=0.18.2
+scipy~=1.8.1
+lmfit~=1.0.3
+serial~=0.0.97
+pyserial~=3.5
+scikit-learn~=1.1.1
+klepto~=0.2.2
+hjson~=3.0.2
