@@ -1,0 +1,15 @@
+*.bin
+*.txt
+*.csv
+*.png
+*.set
+*.spec
+*.exe
+
+/dist/
+/build/
+/output/
+/.vscode/
+/.idea/
+/.vs/
+/data/

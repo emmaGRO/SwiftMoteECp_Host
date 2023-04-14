@@ -1,8 +1,8 @@
 import inspect
 import traceback
-
 import numpy as np
 import pandas as pd
+
 
 
 def get_closest_index_in_series(value, sorted_series):
@@ -53,16 +53,3 @@ def debug():
                        columns=['filename', 'function', 'lineno', 'code_context']
                        )
           )
-
-# def twos_comp(val, bits):
-#     """Computes the 2's complement of int value val
-#     https://stackoverflow.com/questions/1604464/twos-complement-in-python"""
-#
-#     if (val & (1 << (bits - 1))) != 0:  # if sign bit is set e.g., 8bit: 128-255
-#         val = val - (1 << bits)  # compute negative value
-#     return val  # return positive value as is
-
-
-# def hex_to_float(hex_str):
-#     """Converts hex string to float"""
-#     return struct.unpack('f', bytes.fromhex(hex_str))[0]
