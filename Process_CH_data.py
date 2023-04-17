@@ -1,3 +1,5 @@
+import pickle
+
 from dateutil import parser
 from tkinter import filedialog
 import os
@@ -51,10 +53,17 @@ def process_CH_File(master, data_folder, test_type: str):
                 if first_file:
                     index = 1
                     for i in range(1, df.shape[1] - 1, 3): # create number of electrodes depending on CH data
-                        electrode_list.append(Electrode("electrode" + str(index)))
+                        electrode_name = f"E{str(index)}_{experiment_name}"
+                        if electrode_name in os.listdir(f"{os.getcwd()}\\data"):
+                            with open(f"{os.getcwd()}\\data", "rb") as f:
+                                electrode_list.append(pickle.load(f))
+                        else:
+                            electrode_list.append(Electrode(electrode_name))
+
                         electrode_list[-1].create_experiment(experiment_name)
                         index += 1
                     first_file = False
+
                 for i,electrode in enumerate(electrode_list): # selecting electrodes current data in CH file
                     if experiment_name not in electrode.get_experiments():
                         electrode.create_experiment(experiment_name)
