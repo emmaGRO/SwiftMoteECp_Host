@@ -85,10 +85,10 @@ class Titration(Test):
             ser = serial.Serial(port=comport, baudrate=baudrate)
             ser.read_all()
             data = "SWV,"
-            print(f"Titration data:")
             if self.parameters["Concentration"] <= 0.0:
-                messagebox.showerror('Error', "Please enter a concentration bigger than zero")
+                return "Please enter a concentration bigger than zero"
             else:
+                print(f"Titration data:")
                 for param, value in self.parameters.items():
                     data = data + f"{param}:{value},"
                     print(f"{param}:{value},")
@@ -110,8 +110,8 @@ class Titration(Test):
                                 _time.append(float(lst[0].split(":")[1]))
                                 _voltage.append(float(lst[1].split(":")[1]))
                                 _current.append(float(lst[2].split(":")[1].strip()))
-                    except Exception:
-                        return debug()
+                    except Exception as e:
+                        return e
                 return self.add_result(_index, dt, _voltage, _current,self.parameters["Frequency"],self.parameters["Concentration"])
         except Exception as e:
             return e

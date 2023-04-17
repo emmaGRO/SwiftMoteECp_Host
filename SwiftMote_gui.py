@@ -515,13 +515,12 @@ class App(tk.Tk):
             self.latest_volta_btn["state"] = "disabled"
             self.raw_data_df = None
             self.to_update_plots = True
+            add_experiment_btn['state'] = "active"
+            del_experiment_btn['state'] = "active"
 
         # ############################# Experiment selection from selected Electrode ######################################################
         def update_experience_list():
             self.Experiment_cBox['values'] = self.current_electrode.get_experiments()
-            add_experiment_btn['state'] = "active"
-            del_experiment_btn['state'] = "active"
-
 
         self.Experiment_cBox = tk.ttk.Combobox(master=frameExperiment,
                                                width=40,
@@ -557,6 +556,8 @@ class App(tk.Tk):
                 electrode.save(self.data_path)
                 self.print(f"{name} deleted successfuly")
                 self.Experiment_cBox.set("")
+                self.titration_df = None
+                block_tests()
             else:
                 messagebox.showerror('Error', f"{name} doesn't exists in {electrode.name}")
         def set_experiment(event):
@@ -569,17 +570,26 @@ class App(tk.Tk):
                 create_Lovric_btn["state"] = 'active'
                 create_Volta_btn["state"] = 'active'
                 self.test_cBox.event_generate('<<ComboboxSelected>>')
-                if len(list(self.current_electrode.get_tests(experiment_name)["Titration"].get_df())) >= 0:
+                if self.current_electrode.get_tests(experiment_name)["Titration"].get_df().shape[0] > 0:
                     self.titration_df = self.current_electrode.get_tests(experiment_name)["Titration"].get_df().sort_values(by=["concentration"])
                     self.plots.min_pt = list(self.titration_df["concentration"])[0]
                     self.plots.max_pt = list(self.titration_df["concentration"])[-1]
                     self.update_titration_graph = True
-
             self.to_update_plots = True
 
         frameExperiment.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
 
         # ############################# Experiment type selection from selected Experiment ######################################################
+        def block_tests():
+            self.test_cBox.set("")
+            self.test_cBox['state'] = 'disabled'
+            create_titration_btn["state"] = 'disabled'
+            create_Lovric_btn["state"] = 'disabled'
+            create_Volta_btn["state"] = 'disabled'
+            for child in frameTest_params_params.winfo_children():
+                child.destroy()
+            update_plot()
+            self.raw_data_df = None
         def update_test_list():
             self.test_cBox["values"] = list(self.current_electrode.get_tests(self.Experiment_cBox.get()).keys())
             self.latest_volta_btn["state"] = "active"
@@ -675,17 +685,19 @@ class App(tk.Tk):
         def Create_SWV():
             Update_test_variable_frame(self.current_electrode.get_tests(self.Experiment_cBox.get())["SWV"])
         def run_test(test:Test):
-            param = dict([(p[0], p[1].get()) for p in self.test_params.items()])
-            test.update_param(param)
             try:
+                param = dict([(p[0], p[1].get()) for p in self.test_params.items()])
+                test.update_param(param)
+
                 result = test.run_test(self.comport_cbox.get(),115200)
                 if result == 1:
                     self.current_electrode.save(self.data_path)
-                    self.print("Test ran successfull")
+                    self.print("Test ran successfully")
                 else:
                     messagebox.showerror('Error', result.__str__())
                 self.Experiment_cBox.event_generate('<<ComboboxSelected>>')
                 self.test_cBox.event_generate('<<ComboboxSelected>>')
+                self.volta_slider.set(len(test.get_df())+1)
             except Exception as e:
                 messagebox.showerror('Error', e.__str__())
         frameTest_params_params.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
