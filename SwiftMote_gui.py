@@ -489,7 +489,7 @@ class App(tk.Tk):
                 self.electrode_list[name] = Electrode(name)
                 self.electrode_list[name].save(self.data_path)
                 self.print(f"{name} created successfully")
-                self.Electrode_cBox.set(self.electrode_list[name])
+                self.Electrode_cBox.set(self.electrode_list[name].name)
 
         def del_electrode():
             electrode = self.current_electrode
@@ -684,6 +684,7 @@ class App(tk.Tk):
                     self.print("Test ran successfull")
                 else:
                     messagebox.showerror('Error', result.__str__())
+                self.Experiment_cBox.event_generate('<<ComboboxSelected>>')
                 self.test_cBox.event_generate('<<ComboboxSelected>>')
             except Exception as e:
                 messagebox.showerror('Error', e.__str__())
