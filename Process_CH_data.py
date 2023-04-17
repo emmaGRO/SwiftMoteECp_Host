@@ -23,8 +23,7 @@ def process_CH_File(master, data_folder, test_type: str):
                 return
             if concentration_list[0] == 0:
                 concentration_list[0] = concentration_list[1]
-        electrode_list = []
-        first_file = True
+        electrode_list = {}
         for fi in os.listdir(data_path):
             if fi.__contains__(".txt") and fi.__contains__("Hz_"):
                 ##################################### opeining file to get data ################
@@ -48,35 +47,42 @@ def process_CH_File(master, data_folder, test_type: str):
                     file = file.replace("__", "_")
                 file = file.split("_")
                 frequency = int(file[-2].replace("Hz", ""))
-                experiment_name = f'{str(file[-3])}_{frequency}'
+                experiment_name = f'{str(file[-3])}_{frequency}Hz'
                 sample = int(file[-1])
-                if first_file:
-                    index = 1
-                    for i in range(1, df.shape[1] - 1, 3): # create number of electrodes depending on CH data
-                        electrode_name = f"E{str(index)}_{experiment_name}"
-                        if electrode_name in os.listdir(f"{os.getcwd()}\\data"):
-                            with open(f"{os.getcwd()}\\data", "rb") as f:
-                                electrode_list.append(pickle.load(f))
-                        else:
-                            electrode_list.append(Electrode(electrode_name))
+                index = 1
+                for i in range(1, df.shape[1] - 1, 3): # splitting CH file into electrodes
+                    electrode_name = f"E{str(index)}_{str(file[-3])}"
 
-                        electrode_list[-1].create_experiment(experiment_name)
-                        index += 1
-                    first_file = False
+                    if electrode_name in os.listdir(f"{os.getcwd()}\\data"): # if electrode not in list but is saved in data, load it and add to list
+                        with open(f"{os.getcwd()}\\data\\{electrode_name}", "rb") as f:
+                            electrode_list[electrode_name] = (pickle.load(f))
+                        # print(f'{electrode_name} already in data folder')
 
-                for i,electrode in enumerate(electrode_list): # selecting electrodes current data in CH file
-                    if experiment_name not in electrode.get_experiments():
-                        electrode.create_experiment(experiment_name)
-                    exp = electrode.get_tests(experiment_name)
-                    sorted_vals = sorted(list(zip(df.iloc[:, 0].tolist(), df.iloc[:, 3*i+1].tolist())))
+                    elif electrode_name in electrode_list.keys(): # if electrode is already in the list, pass
+                        # print(f'{electrode_name} already in list')
+                        pass
+
+                    else:
+                        electrode_list[electrode_name] = Electrode(electrode_name) # else, create new electrode
+                        # print(f'creating {electrode_name}')
+
+                    if experiment_name not in electrode_list[electrode_name].get_experiments():
+                        electrode_list[electrode_name].create_experiment(experiment_name)
+                        # print(f'creating experiment {experiment_name} for {electrode_name}')
+
+                    exp = electrode_list[electrode_name].get_tests(experiment_name)
+                    sorted_vals = sorted(list(zip(df.iloc[:, 0].tolist(), df.iloc[:,i].tolist())))
                     voltages = [val[0] for val in sorted_vals]
-                    currents = [val[1]*1e6 for val in sorted_vals]
-                    exp[test_type].add_result(sample,exp_datetime,voltages,currents,frequency,concentration_list[sample-1])
+                    currents = [val[1] * 1e6 for val in sorted_vals]
+                    exp[test_type].add_result(sample, exp_datetime, voltages, currents, frequency, concentration_list[sample - 1])
+                    index += 1
+
+
                 master.print(str(fi) + ' processed')
 
         master.print('All files have been processed without error')
 
-        for electrode in electrode_list:
+        for electrode in electrode_list.values():
             electrode.save(data_folder)
 
         return electrode_list
