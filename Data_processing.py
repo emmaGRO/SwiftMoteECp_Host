@@ -146,12 +146,13 @@ def extract_gains(voltages: list[float], currents:list[float]) -> dict:
         baseline_coeff = np.poly1d(np.polyfit(voltages_split, currents_split, 2))
         data_baseline = [current for current in baseline_coeff(voltages)]
         normalized_gain = list([(data_smooth[i] - data_baseline[i])/data_baseline[i] for i in range(len(data_smooth))])
+        max_gain_index = normalized_gain.index(np.max(normalized_gain))
         ######################################################## half heigth width #############################################################################
         half_gain = np.max(normalized_gain) / 2
-        abs_dict = {i: abs(gain - half_gain) for i,gain in enumerate(normalized_gain[:zero_index])}
+        abs_dict = {i: abs(gain - half_gain) for i,gain in enumerate(normalized_gain[:max_gain_index])}
         pt1 = min(abs_dict, key=abs_dict.get)
 
-        abs_dict = {i+zero_index: abs(gain - half_gain) for i, gain in enumerate(normalized_gain[zero_index:])}
+        abs_dict = {i+max_gain_index: abs(gain - half_gain) for i, gain in enumerate(normalized_gain[max_gain_index:])}
         pt2 = min(abs_dict, key=abs_dict.get)
 
     except Exception:
@@ -160,8 +161,8 @@ def extract_gains(voltages: list[float], currents:list[float]) -> dict:
         gain_coeff = np.poly1d(np.polyfit(voltages, normalized_gain, 6))
         return {"gain coefs":gain_coeff,
                 "baseline coefs":baseline_coeff,
-                "peak current": currents[zero_index],
-                "peak voltage": voltages[zero_index],
+                "peak current": currents[max_gain_index],
+                "peak voltage": voltages[max_gain_index],
                 "half-height voltages": [voltages[pt1], voltages[pt2]]}
 
 

@@ -3,6 +3,7 @@ import importlib
 import json
 import math
 import struct
+import tkinter.tix
 import warnings
 import time
 
@@ -650,6 +651,20 @@ class App(tk.Tk):
             self.update_raw_data_graph = True
             self.to_update_plots = True
 
+        def set_gain(event):
+            try:
+                if self.gain_Cbox.get() == "0":
+                    self.print(f"Gain is zero {self.gain_Cbox.get()}")
+                    self.Rtia_Ebox["state"] = "normal"
+                else:
+                    self.print(f"Gain is not zero {self.gain_Cbox.get()}")
+                    self.Rtia_Ebox["state"] = "normal"
+                    self.Rtia_Ebox.delete(0,"end")
+                    self.Rtia_Ebox.insert(0,0)
+                    self.Rtia_Ebox["state"] = "disabled"
+            except Exception:
+                debug()
+
         def Update_test_variable_frame(test:Test):  # used to set variable list for the test chosen in the combo box self.tests_cbox
             for child in frameTest_params_params.winfo_children():
                 child.destroy()
@@ -661,13 +676,45 @@ class App(tk.Tk):
             for variable,value in test.get_params().items():
                 self.test_params[variable] = tk.DoubleVar(value=value)
                 tk.Label(master=frameTestVariablesGrid, text=variable, font=font3).grid(row=index, column=0, sticky='W')
-                Entry_box = tk.Entry(master=frameTestVariablesGrid,
-                                      textvariable=self.test_params[variable],
-                                      width=self.width + 1,
-                                      font=font3,
-                                      justify="center")
-                Entry_box.grid(row=index, column=1, pady=1)
+                if variable != "Rload" and variable != "Gain" and variable != "Rtia":
+                    Entry_box = tk.Entry(master=frameTestVariablesGrid,
+                                          textvariable=self.test_params[variable],
+                                          width=self.width + 1,
+                                          font=font3,
+                                          justify="center")
+                    Entry_box.grid(row=index, column=1, pady=1)
+                else:
+                    if variable == "Rload":
+                        Combo_box = tk.ttk.Combobox(master=frameTestVariablesGrid,
+                                                    textvariable=self.test_params[variable],
+                                                    width=self.width - 2,
+                                                    font=font3,
+                                                    values=["10","33","50","100"],
+                                                    justify="center",
+                                                    state="readonly")
+                        Combo_box.grid(row=index, column=1, pady=1)
+                    elif variable == "Gain":
+                        self.gain_Cbox = tk.ttk.Combobox(master=frameTestVariablesGrid,
+                                                        textvariable=self.test_params[variable],
+                                                        width=self.width - 2,
+                                                        font=font3,
+                                                        values=["0","1","2","3","4","5","6","7"],
+                                                        justify="center",
+                                                        state="readonly")
+                        self.gain_Cbox.bind('<<ComboboxSelected>>', lambda event: set_gain(event))
+                        self.gain_Cbox.grid(row=index, column=1, pady=1)
+                    elif variable == "Rtia":
+                        self.Rtia_Ebox = tk.Entry(master=frameTestVariablesGrid,
+                                             textvariable=self.test_params[variable],
+                                             width=self.width + 1,
+                                             font=font3,
+                                             justify="center",
+                                             state="disabled")
+                        self.Rtia_Ebox.grid(row=index, column=1, pady=1)
+                        self.gain_Cbox.event_generate('<<ComboboxSelected>>')
+
                 index += 1
+
             Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Run Test", command=lambda: run_test(test))
             Run_test_btn.grid(row=index, columnspan=2, sticky="nesw")
 
@@ -876,9 +923,11 @@ class App(tk.Tk):
                         concentration = list(self.titration_df['concentration'])
                         max_gain = []
                         for i in range(len(self.titration_df['raw_voltages'].iloc[:])):
-                            normalized_gain = list(np.polyval(self.titration_df['normalized_gain'].iloc[i], self.titration_df['raw_voltages'].iloc[i]))
-                            max_gain.append(np.max(normalized_gain))
-
+                            # normalized_gain = list(np.polyval(self.titration_df['normalized_gain'].iloc[i], self.titration_df['raw_voltages'].iloc[i]))
+                            # max_gain.append(np.max(normalized_gain))
+                            baseline = list(np.polyval(self.titration_df['baseline'].iloc[i], self.titration_df['raw_voltages'].iloc[i]))
+                            g = self.titration_df['peak_current'].iloc[i] - baseline[list(self.titration_df['raw_currents'].iloc[i]).index(self.titration_df['peak_current'].iloc[i])]
+                            max_gain.append(g)
                         if self.isHill:
                             if concentration[concentration.index(self.plots.min_pt)] < concentration[concentration.index(self.plots.max_pt)]:
                                 self.hf = HillFit(concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1],
@@ -892,13 +941,13 @@ class App(tk.Tk):
                                 self.hf.fitting()
                                 self.hf.y_fit = np.flip(self.hf.y_fit)
 
-                            self.plots.titration_data["titration"].set_data(concentration, [gain for gain in max_gain])
+                            self.plots.titration_data["titration"].set_data(concentration, max_gain)
                             self.plots.titration_data["fit"].set_data(self.hf.x_fit, self.hf.y_fit)
                             self.plots.titration_data["fit"].set_label(f"$R^2$={self.hf.r_2:.3}, k ={self.hf.ec50:.3E}, n ={self.hf.nH:.3E}")
                             self.plots.titration_data["lims"].set_data([self.plots.min_pt, self.plots.max_pt], [max_gain[concentration.index(self.plots.min_pt)], max_gain[concentration.index(self.plots.max_pt)]])
                             self.plots.titration_data["lims"].set_label(f"Hill limits")
-                        else:
 
+                        else:
                             self.linear_coefs = np.polyfit(concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1],max_gain[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1],1)
                             fit_for_r2 = list(np.polyval(self.linear_coefs, concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1]))
                             r_2 = r2_score(max_gain[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1], fit_for_r2)
@@ -1004,8 +1053,12 @@ class App(tk.Tk):
                                 real_concentration = []
                                 _t = []
                                 for i in range(len(self.raw_data_df['raw_voltages'].iloc[:])):
-                                    normalized_gain = list(np.polyval(self.raw_data_df['normalized_gain'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i]))
-                                    maximum_gain = np.max(normalized_gain)
+                                    # normalized_gain = list(np.polyval(self.raw_data_df['normalized_gain'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i]))
+                                    # maximum_gain = np.max(normalized_gain)
+                                    #
+                                    baseline = list(np.polyval(self.raw_data_df['baseline'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i]))
+                                    g = self.raw_data_df['peak_current'].iloc[i] - baseline[list(self.raw_data_df['raw_currents'].iloc[i]).index(self.raw_data_df['peak_current'].iloc[i])]
+                                    maximum_gain = g
 
                                     if self.isHill:
                                         top, bottom, ec50, nH = self.hf.params
@@ -1029,37 +1082,6 @@ class App(tk.Tk):
                             except Exception:
                                 debug()
                                 pass
-
-                            # if self.test_cBox.get() != 'CV':
-                            #     try:
-                            #         normalized_gain = []
-                            #         for i in range(len(self.raw_data_df['raw_voltages'].iloc[:])):
-                            #             normalized_gain.append(list(np.polyval(self.raw_data_df['normalized_gain'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i])))
-                            #         maximum_gain = [np.max(gain) for gain in normalized_gain]
-                            #         real_concentration = []
-                            #         _t = []
-                            #         if self.isHill:
-                            #             top, bottom, ec50, nH = self.hf.params
-                            #             for i in range(len(maximum_gain)):
-                            #                 max_gain = maximum_gain[i]
-                            #                 if bottom <= max_gain <= top:
-                            #                     if not np.isnan(ec50 * (((bottom - max_gain) / (max_gain - top)) ** (1 / nH))):
-                            #                         real_concentration.append(ec50 * (((bottom - max_gain) / (max_gain - top)) ** (1 / nH)))
-                            #                         _t.append(_time[i])
-                            #         else:
-                            #             for i in range(len(maximum_gain)):
-                            #                 max_gain = maximum_gain[i]
-                            #                 real_concentration.append(np.polyval(self.linear_coefs, max_gain))
-                            #                 _t.append(_time[i])
-                            #
-                            #         if len(real_concentration) > 0:
-                            #             self.plots.rt_concentration.set_ylim(min(real_concentration), max(real_concentration))
-                            #             self.plots.rt_concentration.set_xlim(min(_t), max(_t))
-                            #             self.plots.rt_peak.set_xlim(min(_t), max(_t))
-                            #             self.plots.rt_concentration_data["rt concentration"].set_data(_t, real_concentration)
-                            #     except Exception:
-                            #         debug()
-                            #         pass
                 self.update_titration_graph = False
                 self.update_raw_data_graph = False
                 self.plots.fig.tight_layout()

@@ -13,9 +13,9 @@ class Test:
             "E1": 0,
             "E2": 200,
             "Ep": 1,
-            "Current range": 0.003,
-            "Rload": 0,
-            "Gain": 1
+            "Gain": 0,
+            "Rload": 10,
+            "Rtia": 0
         }
         self.results = pd.DataFrame(
                         columns=[
