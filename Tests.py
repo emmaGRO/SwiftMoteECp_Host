@@ -4,11 +4,18 @@ import pandas as pd
 import serial
 from Data_processing import extract_gains
 from Utils import debug
+import time
+import numpy as np
+from tqdm import tqdm
+from progress.bar import Bar
+from alive_progress import alive_bar
+
 epsilon = 1e-30
 
 class Test:
-    def __init__(self,test_type:str):
+    def __init__(self, test_type: str):
         self.type = test_type
+        self.steps = 0
         self.parameters = {
             "E1": 0,
             "E2": 200,
@@ -18,20 +25,20 @@ class Test:
             "Rtia": 0
         }
         self.results = pd.DataFrame(
-                        columns=[
-                            "time",
-                            "raw_voltages",
-                            "raw_currents",
-                            "baseline",
-                            "normalized_gain",
-                            "peak_voltage",
-                            "peak_current",
-                            "half_heigths",
-                            "concentration",
-                            "frequency"
-                        ])
+            columns=[
+                "time",
+                "raw_voltages",
+                "raw_currents",
+                "baseline",
+                "normalized_gain",
+                "peak_voltage",
+                "peak_current",
+                "half_heigths",
+                "concentration",
+                "frequency"
+            ])
 
-    def update_param(self, params:dict) -> bool:
+    def update_param(self, params: dict) -> bool:
         try:
             self.parameters.update(params)
         except Exception:
@@ -47,28 +54,37 @@ class Test:
     def get_df(self) -> pd.DataFrame:
         return self.results
 
-    def add_result(self,index:int, _time: float, _voltage:list[float], _current:list[float], frequency:float,concentration:float = None) -> int:
+    def add_result(self, index: int, _time: float, _voltage: list[float], _current: list[float], frequency: float,
+                   concentration: float = None) -> int:
         try:
-            data = extract_gains(_voltage,_current)
+            data = extract_gains(_voltage, _current)
             self.results.loc[index] = [
                 _time,
-                _voltage ,
-                _current ,
-                list(data["baseline coefs"]) ,
+                _voltage,
+                _current,
+                list(data["baseline coefs"]),
                 list(data["gain coefs"]),
                 data["peak voltage"],
                 data["peak current"],
                 data["half-height voltages"],
                 concentration,
                 frequency
-                ]
+            ]
             self.results.sort_index(axis=0, inplace=True)
             return 1
         except Exception:
             return debug()
 
-    def run_test(self,comport,baudrate):
+    def run_test(self, comport, baudrate):
         pass
+
+    def get_steps(self):
+        if self.parameters["E1"] < 0 and self.parameters["E2"] < 0:
+            self.steps = abs(int(abs(self.parameters["E1"]) + self.parameters["E2"])) + 1
+        elif self.parameters["E1"] > 0 and self.parameters["E2"] > 0:
+            self.steps = abs(int(abs(self.parameters["E1"]) + self.parameters["E2"])) + 1
+        else:
+            self.steps = int(abs(self.parameters["E1"]) + abs(self.parameters["E2"])) + 1
 
 
 class Titration(Test):
@@ -78,13 +94,15 @@ class Titration(Test):
         self.parameters.update({"Amplitude": 50})
         self.parameters.update({"Concentration": 0})
 
-    def run_test(self,comport,baudrate):
+    def run_test(self, comport, baudrate):
+        self.get_steps()
         try:
             dt = datetime.datetime.now()
             dt = float(dt.timestamp() / 86400)
             ser = serial.Serial(port=comport, baudrate=baudrate)
             ser.read_all()
             data = "SWV,"
+
             if self.parameters["Concentration"] <= 0.0:
                 return "Please enter a concentration bigger than zero"
             else:
@@ -92,39 +110,49 @@ class Titration(Test):
                 for param, value in self.parameters.items():
                     data = data + f"{param}:{value},"
                     print(f"{param}:{value},")
+
+                self.get_steps()
+
                 data = data[:-1]
                 ser.write(data.encode())
                 _time = []
                 _voltage = []
                 _current = []
                 _index = self.results.shape[0]
-                while 1:
-                    try:
-                        if int(ser.inWaiting()) > 0:
-                            line = ser.read(size=ser.inWaiting()).decode()
-                            print(line)
-                            if line.find("Done") >= 0:
-                                break
-                            elif line.find("time:") >= 0:
-                                lst = line.split(",")
-                                _time.append(float(lst[0].split(":")[1]))
-                                _voltage.append(float(lst[1].split(":")[1]))
-                                _current.append(float(lst[2].split(":")[1].strip()))
-                    except Exception as e:
-                        return e
-                return self.add_result(_index, dt, _voltage, _current,self.parameters["Frequency"],self.parameters["Concentration"])
+                with alive_bar(self.steps) as bar:
+                    while 1:
+                        try:
+                            if int(ser.inWaiting()) > 0:
+                                line = ser.read(size=ser.inWaiting()).decode()
+                                #print(line)
+                                if line.find("Done") >= 0:
+                                    break
+                                elif line.find("time:") >= 0:
+                                    lst = line.split(",")
+                                    _time.append(float(lst[0].split(":")[1]))
+                                    _voltage.append(float(lst[1].split(":")[1]))
+                                    _current.append(float(lst[2].split(":")[1].strip()))
+                                    bar()
+
+
+                        except Exception as e:
+                            return e
+
+                return self.add_result(_index, dt, _voltage, _current, self.parameters["Frequency"],
+                                       self.parameters["Concentration"])
         except Exception as e:
             return e
 
+
 class CV(Test):
     def __init__(self):
-        super(CV,self).__init__("CV")
-        self.parameters.update({"Frequency":100})
-        self.parameters.update({"vertex1":0})
-        self.parameters.update({"vertex2":200})
+        super(CV, self).__init__("CV")
+        self.parameters.update({"Frequency": 100})
+        self.parameters.update({"vertex1": 0})
+        self.parameters.update({"vertex2": 200})
         self.parameters.update({"Cycles": 1})
 
-    def run_test(self,comport,baudrate):
+    def run_test(self, comport, baudrate):
         ## do the experiment
         dt = datetime.datetime.now()
         dt = float(dt.timestamp() / 86400)
@@ -159,13 +187,14 @@ class CV(Test):
                 return debug()
         return self.add_result(_index, dt, _voltage, _current, self.parameters["Frequency"])
 
+
 class SWV(Test):
     def __init__(self):
         super(SWV, self).__init__("SWV")
         self.parameters.update({"Frequency": 25})
         self.parameters.update({"Amplitude": 50})
 
-    def run_test(self,comport,baudrate):
+    def run_test(self, comport, baudrate):
         ## do the experiment
         dt = datetime.datetime.now()
         dt = float(dt.timestamp() / 86400)
@@ -197,6 +226,7 @@ class SWV(Test):
             except Exception:
                 return debug()
         return self.add_result(_index, dt, _voltage, _current, self.parameters["Frequency"])
+
 
 if __name__ == "__main__":
     pass

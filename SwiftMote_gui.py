@@ -23,6 +23,9 @@ import datetime
 import serial.tools.list_ports
 from Tests import Test
 from Plots import Plot
+
+from memory_profiler import profile
+
 font1 = 'Helvetica 15 bold'
 font2 = 'Helvetica 11 bold'
 font3 = 'Helvetica 10'
@@ -397,7 +400,7 @@ class App(tk.Tk):
                 messagebox.showerror('Error', 'No serial devices connected to scan for devices\n\n' + e.__str__())
         def apply_selected_Serial_device(event):
             pass
-            # self.tasks["Serial"] = loop.create_task(self.register_data_callbacks_serial(interval=5), name="Serial")
+            self.tasks["Serial"] = loop.create_task(self.register_data_callbacks_serial(interval=5), name="Serial")
         self.comport = tk.StringVar()
         self.comport_cbox = tk.ttk.Combobox(master=frameCommConnection,
                                                   values=[],
@@ -480,18 +483,6 @@ class App(tk.Tk):
         del_electrode_btn.pack(side=tk.TOP, fill=tk.X)
         frameElectrodebox.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
 
-        def add_electrode():
-            name = self.Electrode_cBox.get()
-            if os.path.isfile(f"{self.data_path}\\{name}") or name in self.electrode_list.keys():
-                messagebox.showerror('Error', f'{name} already exist, please modify name')
-            elif name == "":
-                messagebox.showerror('Error', f'please add electrode name')
-            else:
-                self.electrode_list[name] = Electrode(name)
-                self.electrode_list[name].save(self.data_path)
-                self.print(f"{name} created successfully")
-                self.Electrode_cBox.set(self.electrode_list[name].name)
-
         def del_electrode():
             electrode = self.current_electrode
             electrode.delete(self.data_path)
@@ -518,6 +509,34 @@ class App(tk.Tk):
             self.to_update_plots = True
             add_experiment_btn['state'] = "active"
             del_experiment_btn['state'] = "active"
+
+        def set_new_electrode():
+            electrode_name = self.Electrode_cBox.get()
+            load_electrode(electrode_name)
+            self.current_electrode = self.electrode_list[electrode_name]
+            self.Experiment_cBox['state'] = "active"
+            self.Experiment_cBox.set("")
+            self.titration_df = None
+            self.test_cBox.set("")
+            self.latest_volta_btn["state"] = "disabled"
+            self.raw_data_df = None
+            self.to_update_plots = True
+            add_experiment_btn['state'] = "active"
+            del_experiment_btn['state'] = "active"
+
+        def add_electrode():
+            name = self.Electrode_cBox.get()
+            if os.path.isfile(f"{self.data_path}\\{name}") or name in self.electrode_list.keys():
+                messagebox.showerror('Error', f'{name} already exist, please modify name')
+            elif name == "":
+                messagebox.showerror('Error', f'please add electrode name')
+            else:
+                self.electrode_list[name] = Electrode(name)
+                self.electrode_list[name].save(self.data_path)
+                self.print(f"{name} created successfully")
+                self.Electrode_cBox.set(self.electrode_list[name].name)
+                set_new_electrode()
+
 
         # ############################# Experiment selection from selected Electrode ######################################################
         def update_experience_list():
@@ -653,7 +672,8 @@ class App(tk.Tk):
 
         def set_gain(event):
             try:
-                if self.gain_Cbox.get() == "0":
+                value = self.gain_Cbox.get()
+                if int(float(value)) == 0:
                     self.print(f"Gain is zero {self.gain_Cbox.get()}")
                     self.Rtia_Ebox["state"] = "normal"
                 else:
@@ -717,6 +737,7 @@ class App(tk.Tk):
 
             Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Run Test", command=lambda: run_test(test))
             Run_test_btn.grid(row=index, columnspan=2, sticky="nesw")
+
 
         create_titration_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create Titration", command=lambda: Create_titration())
         create_Lovric_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create CV", command=lambda: Create_CV())
@@ -815,6 +836,7 @@ class App(tk.Tk):
                 data = [self.new_data["voltages"],self.new_data["currents"],self.new_data["frequency"]]
                 self.new_data = {}
                 for i in range(len(data[0])):
+                    print('hi')
                     self.print(str(data[0][i]) + ', ' + str(data[1][i]))
                 await self.on_new_data_callback_SWV(sender=self.sender_SWV, data_joined=data)
 

@@ -1,3 +1,5 @@
+#include <MemoryFree.h>
+#include <pgmStrToRAM.h>
 
 //Standard Arduino Libraries
 #include <Wire.h>
