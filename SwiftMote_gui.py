@@ -70,6 +70,7 @@ class App(tk.Tk):
         self.to_update_plots = False
         self.datapoint_select_N = 0
         self.isHill = False
+        self.check_params = False
         ################################################# Menu bar #######################################################
 
 
@@ -610,6 +611,7 @@ class App(tk.Tk):
                 child.destroy()
             update_plot()
             self.raw_data_df = None
+
         def update_test_list():
             self.test_cBox["values"] = list(self.current_electrode.get_tests(self.Experiment_cBox.get()).keys())
             self.latest_volta_btn["state"] = "active"
@@ -685,6 +687,16 @@ class App(tk.Tk):
             except Exception:
                 debug()
 
+        def change_params():
+            if self.chkBtn_change_param.get():
+                self.check_params = True
+                self.Entry_box["state"] = "normal"
+                self.gain_Cbox["state"] = "readonly"
+            else:
+                self.check_params = False
+                self.Entry_box["state"] = "disabled"
+                self.gain_Cbox["state"] = "disabled"
+
         def Update_test_variable_frame(test:Test):  # used to set variable list for the test chosen in the combo box self.tests_cbox
             for child in frameTest_params_params.winfo_children():
                 child.destroy()
@@ -693,16 +705,26 @@ class App(tk.Tk):
             frameTestVariablesGrid.pack(side=tk.TOP, anchor=tk.N)  # div 2
             index = 0
             self.test_params = {}
+
+            if test.type != 'SWV':
+                state_val1 = "normal"
+                state_val2 = "readonly"
+            else:
+                print('SWV')
+                state_val1 = "disabled"
+                state_val2 = "disabled"
+
             for variable,value in test.get_params().items():
                 self.test_params[variable] = tk.DoubleVar(value=value)
                 tk.Label(master=frameTestVariablesGrid, text=variable, font=font3).grid(row=index, column=0, sticky='W')
                 if variable != "Rload" and variable != "Gain" and variable != "Rtia":
-                    Entry_box = tk.Entry(master=frameTestVariablesGrid,
+                    self.Entry_box = tk.Entry(master=frameTestVariablesGrid,
                                           textvariable=self.test_params[variable],
                                           width=self.width + 1,
                                           font=font3,
-                                          justify="center")
-                    Entry_box.grid(row=index, column=1, pady=1)
+                                          justify="center",
+                                          state = state_val1)
+                    self.Entry_box.grid(row=index, column=1, pady=1)
                 else:
                     if variable == "Rload":
                         Combo_box = tk.ttk.Combobox(master=frameTestVariablesGrid,
@@ -711,7 +733,7 @@ class App(tk.Tk):
                                                     font=font3,
                                                     values=["10","33","50","100"],
                                                     justify="center",
-                                                    state="readonly")
+                                                    state=state_val2)
                         Combo_box.grid(row=index, column=1, pady=1)
                     elif variable == "Gain":
                         self.gain_Cbox = tk.ttk.Combobox(master=frameTestVariablesGrid,
@@ -720,7 +742,7 @@ class App(tk.Tk):
                                                         font=font3,
                                                         values=["0","1","2","3","4","5","6","7"],
                                                         justify="center",
-                                                        state="readonly")
+                                                        state=state_val2)
                         self.gain_Cbox.bind('<<ComboboxSelected>>', lambda event: set_gain(event))
                         self.gain_Cbox.grid(row=index, column=1, pady=1)
                     elif variable == "Rtia":
@@ -735,9 +757,23 @@ class App(tk.Tk):
 
                 index += 1
 
-            Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Run Test", command=lambda: run_test(test))
-            Run_test_btn.grid(row=index, columnspan=2, sticky="nesw")
 
+            if test.type !=  'SWV':
+                Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Run Test", command=lambda: run_test(test))
+                Run_test_btn.grid(row=index, columnspan=2, sticky="nesw")
+            else:
+                self.chkBtn_change_param = tk.IntVar(value=0)
+                print('create button')
+                change_param_btn = tk.Checkbutton(master=frameTestVariablesGrid,
+                                                       text="Change parameters",
+                                                       variable=self.chkBtn_change_param,
+                                                       command= lambda: change_params(),
+                                                       font=font3,
+                                                       state="normal")
+
+                change_param_btn.grid(row=index, columnspan=2, sticky="nesw")
+                Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Run", command=lambda: run_test(test))
+                Run_test_btn.grid(row=index+1, columnspan=2, sticky="nesw")
 
         create_titration_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create Titration", command=lambda: Create_titration())
         create_Lovric_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create CV", command=lambda: Create_CV())
