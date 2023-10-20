@@ -60,7 +60,8 @@ def load_experiment(master,filepath:str,df_type:str, exp_name:str):
         return 0
 
 def extract_gains(voltages: list[float], currents:list[float]) -> dict:
-
+    voltages = voltages[10:-10]
+    currents = currents[10:-10]
     def get_peaks_and_valleys(values: list, offset: int):
         dt_peaks = []
         for val in values[1:]:
@@ -103,41 +104,43 @@ def extract_gains(voltages: list[float], currents:list[float]) -> dict:
     else:
         zero_index = bump_start
     ################################# approximation of start and end of bump by derivative ##############################################################
-    dt = dt_current
-    bump_start = zero_index
-    bump_end = zero_index
-    count = 0
-    poly = 3
-    isBefore = True
-    isAfter = True
-    err = 0.1
-    while count <= 10:
-        temp = [current for current in list(savgol_filter(diff(dt), win_length, polyorder=poly, mode='mirror'))]
-        try:
-            if isBefore:
-                temp_ind = bump_start
-                peaks_before = get_peaks_and_valleys(temp[:bump_start], 0)
-                bump_start = max(x for x in peaks_before if x < bump_start)
-                difference = (data_smooth[temp_ind] - data_smooth[bump_start]) / data_smooth[temp_ind]
-                if difference < err:
-                    isBefore = False
-        except Exception:
-            pass
-        try:
-            if isAfter:
-                temp_ind = bump_end
-                peaks_after = get_peaks_and_valleys(temp[zero_index:], zero_index)
-                bump_end = min(x for x in peaks_after if x > bump_end)
-                difference = (data_smooth[temp_ind] - data_smooth[bump_end]) / data_smooth[temp_ind]
-                if difference < err:
-                    isAfter = False
-        except Exception:
-            pass
-        if not isBefore and not isAfter:
-            break
-
-        dt = temp
-        count += 1
+    bump_start = data_smooth.index(data_smooth[100])
+    bump_end = data_smooth.index(data_smooth[400])
+    # dt = dt_current
+    # bump_start = zero_index
+    # bump_end = zero_index
+    # count = 0
+    # poly = 3
+    # isBefore = True
+    # isAfter = True
+    # err = 0.1
+    # while count <= 10:
+    #     temp = [current for current in list(savgol_filter(diff(dt), win_length, polyorder=poly, mode='mirror'))]
+    #     try:
+    #         if isBefore:
+    #             temp_ind = bump_start
+    #             peaks_before = get_peaks_and_valleys(temp[:bump_start], 0)
+    #             bump_start = max(x for x in peaks_before if x < bump_start)
+    #             difference = (data_smooth[temp_ind] - data_smooth[bump_start]) / data_smooth[temp_ind]
+    #             if difference < err:
+    #                 isBefore = False
+    #     except Exception:
+    #         pass
+    #     try:
+    #         if isAfter:
+    #             temp_ind = bump_end
+    #             peaks_after = get_peaks_and_valleys(temp[zero_index:], zero_index)
+    #             bump_end = min(x for x in peaks_after if x > bump_end)
+    #             difference = (data_smooth[temp_ind] - data_smooth[bump_end]) / data_smooth[temp_ind]
+    #             if difference < err:
+    #                 isAfter = False
+    #     except Exception:
+    #         pass
+    #     if not isBefore and not isAfter:
+    #         break
+    #
+    #     dt = temp
+    #     count += 1
 
     #################################### create baseline by adding values between start and end of bump#####################################################
     try:
@@ -146,7 +149,9 @@ def extract_gains(voltages: list[float], currents:list[float]) -> dict:
         baseline_coeff = np.poly1d(np.polyfit(voltages_split, currents_split, 2))
         data_baseline = [current for current in baseline_coeff(voltages)]
         normalized_gain = list([(data_smooth[i] - data_baseline[i])/data_baseline[i] for i in range(len(data_smooth))])
-        max_gain_index = normalized_gain.index(np.max(normalized_gain))
+        #max_gain_index = normalized_gain.index(np.max(normalized_gain))
+        max_gain_index = 249
+
         ######################################################## half heigth width #############################################################################
         half_gain = np.max(normalized_gain) / 2
         abs_dict = {i: abs(gain - half_gain) for i,gain in enumerate(normalized_gain[:max_gain_index])}

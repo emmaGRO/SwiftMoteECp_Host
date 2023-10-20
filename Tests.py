@@ -15,6 +15,8 @@ epsilon = 1e-30
 class Test:
     def __init__(self, test_type: str):
         self.type = test_type
+        self.stop_test_flag = False
+        self.stop_continuous = False
         self.steps = 0
         self.parameters = {
             "E1": 0,
@@ -78,6 +80,10 @@ class Test:
     def run_test(self, comport, baudrate):
         pass
 
+    def stop_test(self):
+        self.stop_test_flag = True
+        self.stop_continuous = True
+
     def get_steps(self):
         if self.parameters["E1"] < 0 and self.parameters["E2"] < 0:
             self.steps = abs(int(abs(self.parameters["E1"]) + self.parameters["E2"])) + 1
@@ -95,10 +101,12 @@ class Titration(Test):
         self.parameters.update({"Concentration": 0})
 
     def run_test(self, comport, baudrate):
+        self.stop_test_flag = False  # Reset the stop flag before running the test
         self.get_steps()
         try:
             dt = datetime.datetime.now()
-            dt = float(dt.timestamp() / 86400)
+            dt_float = float(dt.timestamp())
+            dt = float(dt_float / 86400)
             ser = serial.Serial(port=comport, baudrate=baudrate)
             ser.read_all()
             data = "SWV,"
@@ -120,7 +128,7 @@ class Titration(Test):
                 _current = []
                 _index = self.results.shape[0]
                 with alive_bar(self.steps) as bar:
-                    while 1:
+                    while not self.stop_test_flag:
                         try:
                             if int(ser.inWaiting()) > 0:
                                 line = ser.read(size=ser.inWaiting()).decode()
@@ -133,11 +141,11 @@ class Titration(Test):
                                     _voltage.append(float(lst[1].split(":")[1]))
                                     _current.append(float(lst[2].split(":")[1].strip()))
                                     bar()
-
-
                         except Exception as e:
                             return e
-
+                if self.stop_test_flag:
+                    self.stop_test_flag = False
+                    return "Test stopped by user"
                 return self.add_result(_index, dt, _voltage, _current, self.parameters["Frequency"],
                                        self.parameters["Concentration"])
         except Exception as e:
@@ -193,9 +201,12 @@ class SWV(Test):
         super(SWV, self).__init__("SWV")
         self.parameters.update({"Frequency": 25})
         self.parameters.update({"Amplitude": 50})
+        self.parameters.update({"RunTime": 10})
+
 
     def run_test(self, comport, baudrate):
         ## do the experiment
+        self.stop_test_flag = False  # Reset the stop flag before running the test
         dt = datetime.datetime.now()
         dt = float(dt.timestamp() / 86400)
         ser = serial.Serial(port=comport, baudrate=baudrate)
@@ -211,7 +222,7 @@ class SWV(Test):
         _voltage = []
         _current = []
         _index = self.results.shape[0]
-        while 1:
+        while not self.stop_test_flag:
             try:
                 if int(ser.inWaiting()) > 0:
                     line = ser.read(size=ser.inWaiting()).decode()
@@ -222,10 +233,22 @@ class SWV(Test):
                         lst = line.split(",")
                         _time.append(float(lst[0].split(":")[1]))
                         _voltage.append(float(lst[1].split(":")[1]))
-                        _current.append(float(lst[2].split(":")[1].strip()))
+                        _current_value = lst[2].split(":")[1].strip()  # Remove unwanted characters
+                        # Try to convert the cleaned string to a float
+                        try:
+                            _current.append(float(_current_value))
+                        except ValueError:
+                            print(_current_value)
+                            print(_current_value.split("/"))
+
             except Exception:
                 return debug()
+        if self.stop_test_flag:
+            self.stop_test_flag = False
+            return "Test stopped by user"
         return self.add_result(_index, dt, _voltage, _current, self.parameters["Frequency"])
+
+
 
 
 if __name__ == "__main__":

@@ -6,9 +6,11 @@ import struct
 import tkinter.tix
 import warnings
 import time
+import threading
+import queue
 
 import numpy as np
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg,NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from tkinter import filedialog, messagebox, ttk
 import bleak
 import matplotlib
@@ -59,7 +61,7 @@ class App(tk.Tk):
         self.path_list = []
         self.output_path = os.getcwd() + "\\output"
         self.data_path = os.getcwd() + "\\data"
-        self.create_directories([self.output_path,self.data_path])
+        self.create_directories([self.output_path, self.data_path])
 
         self.electrode_list = {}
         self.current_electrode = None
@@ -69,10 +71,13 @@ class App(tk.Tk):
         self.update_titration_graph = False
         self.to_update_plots = False
         self.datapoint_select_N = 0
+        self.thread_result = -1
+        self.data_received = False
         self.isHill = False
         self.check_params = False
-        ################################################# Menu bar #######################################################
+        self.continuous_running = False
 
+        ################################################# Menu bar #######################################################
 
         def on_button_file_save_csv():
             try:
@@ -86,22 +91,23 @@ class App(tk.Tk):
                 Lovric_frame = tk.Frame(master=parameters_frame)
                 volta_frame = tk.Frame(master=parameters_frame)
                 save_btn_frame = tk.Frame(master=saving_window)
-                saving_window.rowconfigure(0,weight=1)
-                saving_window.rowconfigure(1,weight=1)
-                electrodes_frame.grid(row=0,column=0,sticky="nesw")
-                parameters_frame.grid(row=0,column=1)
-                save_btn_frame.grid(row=1,columnspan=2)
+                saving_window.rowconfigure(0, weight=1)
+                saving_window.rowconfigure(1, weight=1)
+                electrodes_frame.grid(row=0, column=0, sticky="nesw")
+                parameters_frame.grid(row=0, column=1)
+                save_btn_frame.grid(row=1, columnspan=2)
                 elec_lst = {}
                 titration_lst = {}
                 lovric_lst = {}
                 volta_lst = {}
                 first = True
-                tk.Label(master=electrodes_frame, text="Electrodes", font=font1).pack(side=tk.TOP,anchor="n",fill=tk.BOTH)
+                tk.Label(master=electrodes_frame, text="Electrodes", font=font1).pack(side=tk.TOP, anchor="n",
+                                                                                      fill=tk.BOTH)
                 if len(self.electrode_list.keys()) != 0:
-                    for (key,value) in self.electrode_list.items():
+                    for (key, value) in self.electrode_list.items():
                         # packing electrodes
-                        ebtn =ttk.Checkbutton(master=electrodes_frame,text=key,variable=tk.IntVar())
-                        ebtn.state(["selected","!alternate"])
+                        ebtn = ttk.Checkbutton(master=electrodes_frame, text=key, variable=tk.IntVar())
+                        ebtn.state(["selected", "!alternate"])
                         elec_lst[ebtn] = value
                         ebtn.pack(side=tk.TOP, anchor="nw")
                         # packing parameters
@@ -110,30 +116,36 @@ class App(tk.Tk):
                                 first = False
                                 for (test_type, test) in enumerate(self.electrode_list[key].get_tests(exp).values()):
                                     if test.type == "Titration":
-                                        tk.Label(master=titration_frame, text="Titration parameters", font=font1).pack(side=tk.TOP)
+                                        tk.Label(master=titration_frame, text="Titration parameters", font=font1).pack(
+                                            side=tk.TOP)
                                         df = test.get_df()
                                         if not df.empty:
                                             for col in df.columns:
                                                 if col not in titration_lst.keys() and col != "time" and col != "frequency" and col != "concentration":
-                                                    pbtn = ttk.Checkbutton(master=titration_frame, text=col, variable=tk.IntVar())
+                                                    pbtn = ttk.Checkbutton(master=titration_frame, text=col,
+                                                                           variable=tk.IntVar())
                                                     pbtn.state(["selected", "!alternate"])
                                                     titration_lst[pbtn] = col
                                                     pbtn.pack(side=tk.TOP, anchor="nw")
                                     if test.type == "CV":
-                                        tk.Label(master=Lovric_frame, text="Cyclic voltammetry parameters", font=font1).pack(side=tk.TOP)
+                                        tk.Label(master=Lovric_frame, text="Cyclic voltammetry parameters",
+                                                 font=font1).pack(side=tk.TOP)
                                         if not test.get_df().empty:
                                             for col in test.get_df().columns:
                                                 if col not in lovric_lst.keys():
-                                                    pbtn = ttk.Checkbutton(master=Lovric_frame, text=col, variable=tk.IntVar())
+                                                    pbtn = ttk.Checkbutton(master=Lovric_frame, text=col,
+                                                                           variable=tk.IntVar())
                                                     pbtn.state(["selected", "!alternate"])
                                                     lovric_lst[pbtn] = col
                                                     pbtn.pack(side=tk.TOP, anchor="nw")
                                     if test.type == "SWV":
-                                        tk.Label(master=volta_frame, text="Square wave voltammetry  parameters", font=font1).pack(side=tk.TOP)
+                                        tk.Label(master=volta_frame, text="Square wave voltammetry  parameters",
+                                                 font=font1).pack(side=tk.TOP)
                                         if not test.get_df().empty:
                                             for col in test.get_df().columns:
                                                 if col not in volta_lst.keys():
-                                                    pbtn = ttk.Checkbutton(master=volta_frame, text=col, variable=tk.IntVar())
+                                                    pbtn = ttk.Checkbutton(master=volta_frame, text=col,
+                                                                           variable=tk.IntVar())
                                                     pbtn.state(["selected", "!alternate"])
                                                     volta_lst[pbtn] = col
                                                     pbtn.pack(side=tk.TOP, anchor="nw")
@@ -142,15 +154,19 @@ class App(tk.Tk):
                     messagebox.showinfo('Info', 'No data to save')
 
                 if not titration_lst:
-                    tk.Label(master=titration_frame, text="No parameters to show", font=font2).pack(side=tk.TOP,anchor="nw")
+                    tk.Label(master=titration_frame, text="No parameters to show", font=font2).pack(side=tk.TOP,
+                                                                                                    anchor="nw")
                 if not lovric_lst:
-                    tk.Label(master=Lovric_frame, text="No parameters to show", font=font2).pack(side=tk.TOP,anchor="nw")
+                    tk.Label(master=Lovric_frame, text="No parameters to show", font=font2).pack(side=tk.TOP,
+                                                                                                 anchor="nw")
                 if not volta_lst:
-                    tk.Label(master=volta_frame, text="No parameters to show", font=font2).pack(side=tk.TOP,anchor="nw")
+                    tk.Label(master=volta_frame, text="No parameters to show", font=font2).pack(side=tk.TOP,
+                                                                                                anchor="nw")
 
                 titration_frame.pack(side=tk.TOP, anchor="nw")
                 Lovric_frame.pack(side=tk.TOP, anchor="nw")
                 volta_frame.pack(side=tk.TOP, anchor="nw")
+
                 def on_button_save():
                     date = datetime.datetime.now().strftime('%Y-%m-%d')
                     path = f"{self.output_path}\\{date}"
@@ -163,7 +179,7 @@ class App(tk.Tk):
                     first_titration = True
                     first_lovric = True
                     first_volta = True
-                    for (electrode_chckbtn,electrode_obj) in elec_lst.items():
+                    for (electrode_chckbtn, electrode_obj) in elec_lst.items():
                         if "selected" in electrode_chckbtn.state():
                             for exp in list(electrode_obj.get_experiments()):
                                 for (test_type, test) in enumerate(self.electrode_list[key].get_tests(exp).values()):
@@ -178,7 +194,8 @@ class App(tk.Tk):
                                             for (chk_btn, p_name) in titration_lst.items():
                                                 if "selected" in chk_btn.state():
                                                     data = df[[p_name]].copy()
-                                                    data.rename(columns={p_name: f'{p_name}_{e_name}_{frequency}hz'}, inplace=True)
+                                                    data.rename(columns={p_name: f'{p_name}_{e_name}_{frequency}hz'},
+                                                                inplace=True)
                                                     titration_df = pd.concat([titration_df, data], axis=1)
 
                                     elif test.type == "CV":
@@ -187,14 +204,14 @@ class App(tk.Tk):
                                             charge = df['peak_current'] / df["frequency"]
                                             charge.columns = [f'charge_{e_name}']
                                             if first_lovric:
-                                                lovric_df = df[["time","frequency"]].copy()
+                                                lovric_df = df[["time", "frequency"]].copy()
                                                 first_lovric = False
                                             lovric_df = pd.concat([lovric_df, charge], axis=1)
                                             for (chk_btn, p_name) in lovric_lst.items():
                                                 if "selected" in chk_btn.state():
                                                     data = df[[p_name]].copy()
                                                     data.rename(columns={p_name: f'{p_name}_{e_name}'}, inplace=True)
-                                                    pd.concat(data,charge)
+                                                    pd.concat(data, charge)
                                                     lovric_df = pd.concat([lovric_df, data], axis=1)
 
                                     elif test.type == "SWV":
@@ -207,7 +224,8 @@ class App(tk.Tk):
                                             for (chk_btn, p_name) in volta_lst.items():
                                                 if "selected" in chk_btn.state():
                                                     data = df[[p_name]].copy()
-                                                    data.rename(columns={p_name: f'{p_name}_{e_name}_{frequency}hz'}, inplace=True)
+                                                    data.rename(columns={p_name: f'{p_name}_{e_name}_{frequency}hz'},
+                                                                inplace=True)
                                                     volta_df = pd.concat([volta_df, data], axis=1)
                                     else:
                                         self.print(f"test type {test.type} doen't exist")
@@ -230,7 +248,7 @@ class App(tk.Tk):
                     saving_window.quit()
                     saving_window.destroy()
 
-                tk.Button(master=save_btn_frame,text="Save",command=on_button_save).pack(side=tk.TOP,anchor="center")
+                tk.Button(master=save_btn_frame, text="Save", command=on_button_save).pack(side=tk.TOP, anchor="center")
 
             except Exception as e:
                 self.print(e)
@@ -295,7 +313,8 @@ class App(tk.Tk):
                     if not self.chkBtn_show_latest_voltammogram_var.get() and self.volta_slider.get() > 0:
                         self.volta_slider.set(self.volta_slider.get() - 1)
                 elif event.keysym == 'Right':
-                    if not self.chkBtn_show_latest_voltammogram_var.get() and self.volta_slider.get() < len(self.titration_df):
+                    if not self.chkBtn_show_latest_voltammogram_var.get() and self.volta_slider.get() < len(
+                            self.titration_df):
                         self.volta_slider.set(self.volta_slider.get() + 1)
             except Exception:
                 pass
@@ -342,7 +361,7 @@ class App(tk.Tk):
         self.resizable(True, True)
         # initialize the right part of the GUI
         self.frameGraph = tk.Frame(master=self, highlightbackground="black", highlightthickness=1)  # div
-        self.plots = Plot(master=self,frame = self.frameGraph)
+        self.plots = Plot(master=self, frame=self.frameGraph)
 
         # Initialize the left part of the GUI
         self.frameControls = tk.Frame(master=self, highlightbackground="black", highlightthickness=1)  # div
@@ -350,7 +369,6 @@ class App(tk.Tk):
 
         self.frameControls.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         self.frameGraph.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-
 
         self.tasks["UI"] = loop.create_task(self.update_ui_loop(interval=1 / 60), name="UI")
         time.sleep(0.005)  # small delay to let dicts init
@@ -361,7 +379,7 @@ class App(tk.Tk):
         self.time_type = True
         #################################################################
 
-    def create_directories(self,dir_list):
+    def create_directories(self, dir_list):
         for path in dir_list:
             if not os.path.exists(path):
                 os.makedirs(path)
@@ -376,10 +394,10 @@ class App(tk.Tk):
         self.graph_values = {}
         self.calib_data_dict = {}
         frameCommConnection = tk.Frame(master=master,
-                                           highlightbackground="black",
-                                           highlightthickness=1,
-                                           width=self.winfo_width()
-                                           )  # div
+                                       highlightbackground="black",
+                                       highlightthickness=1,
+                                       width=self.winfo_width()
+                                       )  # div
 
         ############################ Serial Device selection #############################################
 
@@ -399,30 +417,29 @@ class App(tk.Tk):
                 self.print(e)
                 debug()
                 messagebox.showerror('Error', 'No serial devices connected to scan for devices\n\n' + e.__str__())
+
         def apply_selected_Serial_device(event):
             pass
             self.tasks["Serial"] = loop.create_task(self.register_data_callbacks_serial(interval=5), name="Serial")
+
         self.comport = tk.StringVar()
         self.comport_cbox = tk.ttk.Combobox(master=frameCommConnection,
-                                                  values=[],
-                                                  textvariable=self.comport,
-                                                  postcommand=refresh_Serial_devices,
-                                                  width=40,
-                                                  state="readonly",
-                                                  )
-        self.comport_cbox.bind('<<ComboboxSelected>>',apply_selected_Serial_device)
+                                            values=[],
+                                            textvariable=self.comport,
+                                            postcommand=refresh_Serial_devices,
+                                            width=40,
+                                            state="readonly",
+                                            )
+        self.comport_cbox.bind('<<ComboboxSelected>>', apply_selected_Serial_device)
         self.comport_cbox.pack(side=tk.TOP, fill=tk.X)
-
-
-
 
         ############################ Frame init for data control #############################################
 
         frameElectrode = tk.Frame(master=master,
-                                       highlightbackground="black",
-                                       highlightthickness=1,
-                                       width=self.winfo_width()
-                                       )  # div
+                                  highlightbackground="black",
+                                  highlightthickness=1,
+                                  width=self.winfo_width()
+                                  )  # div
         tk.Label(master=frameElectrode, text="Electrode", font=font1).pack(side=tk.TOP)
         frameElectrodebox = tk.Frame(master=frameElectrode,
                                      width=40)
@@ -439,13 +456,13 @@ class App(tk.Tk):
         tk.Label(master=frameExpType, text="Displayed data", font=font2).pack(side=tk.TOP)
 
         frameTest_results = tk.Frame(master=frameExpType,
-                                highlightbackground="black",
-                                highlightthickness=0)  # div
+                                     highlightbackground="black",
+                                     highlightthickness=0)  # div
 
         frameTest_params = tk.Frame(master=master,
-                                          highlightbackground="black",
-                                          highlightthickness=1
-                                          )  # div
+                                    highlightbackground="black",
+                                    highlightthickness=1
+                                    )  # div
 
         frameTest_params_params = tk.Frame(master=frameTest_params,
                                            highlightbackground="black",
@@ -453,34 +470,34 @@ class App(tk.Tk):
                                            )  # div
         tk.Label(master=frameTest_params_params, text="Test parameters", font=font1).pack(side=tk.TOP)
         frameTest_params_btn = tk.Frame(master=frameTest_params,
-                                    highlightbackground="black",
-                                    highlightthickness=1
-                                    )  # div
+                                        highlightbackground="black",
+                                        highlightthickness=1
+                                        )  # div
 
-        frameTest_params_btn.columnconfigure(0,weight=1)
-        frameTest_params_btn.columnconfigure(1,weight=1)
-        frameTest_params_btn.columnconfigure(2,weight=1)
+        frameTest_params_btn.columnconfigure(0, weight=1)
+        frameTest_params_btn.columnconfigure(1, weight=1)
+        frameTest_params_btn.columnconfigure(2, weight=1)
 
         ############################ Electrode selection with dropdown Experiment updating #############################################
         def update_electrode_list():
-            elec_list =  list(os.listdir(f"{self.data_path}"))
+            elec_list = list(os.listdir(f"{self.data_path}"))
             self.Electrode_cBox["values"] = elec_list
 
         self.Electrode_cBox = ttk.Combobox(master=frameElectrodebox,
-                                                    values = [],
-                                                     width=self.width,
-                                                     justify="center",
-                                                     font=font3,
-                                                     postcommand = update_electrode_list)
+                                           values=[],
+                                           width=self.width,
+                                           justify="center",
+                                           font=font3,
+                                           postcommand=update_electrode_list)
 
-
-        self.Electrode_cBox.bind('<<ComboboxSelected>>',lambda event: set_electrode(event))
+        self.Electrode_cBox.bind('<<ComboboxSelected>>', lambda event: set_electrode(event))
         self.Electrode_cBox.pack(side=tk.TOP, fill=tk.X)
 
-
-        add_electrode_btn = tk.Button(master=frameElectrodebox,state="normal", text="Add new electrode", command=lambda: add_electrode())
+        add_electrode_btn = tk.Button(master=frameElectrodebox, state="normal", text="Add new electrode",
+                                      command=lambda: add_electrode())
         add_electrode_btn.pack(side=tk.TOP, fill=tk.X)
-        del_electrode_btn = tk.Button(master=frameElectrodebox, state="normal", text="Delete electrode", command=lambda: del_electrode())
+        del_electrode_btn = tk.Button(master=frameElectrodebox, state="normal", text="Delete electrode",
+                                      command=lambda: del_electrode())
         del_electrode_btn.pack(side=tk.TOP, fill=tk.X)
         frameElectrodebox.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
 
@@ -492,7 +509,7 @@ class App(tk.Tk):
             self.Electrode_cBox.set("")
 
         def load_electrode(name):
-            with open(f"{self.data_path}\\{name}","rb") as f:
+            with open(f"{self.data_path}\\{name}", "rb") as f:
                 self.electrode_list[name] = pickle.load(f)
 
         def set_electrode(event):
@@ -538,7 +555,6 @@ class App(tk.Tk):
                 self.Electrode_cBox.set(self.electrode_list[name].name)
                 set_new_electrode()
 
-
         # ############################# Experiment selection from selected Electrode ######################################################
         def update_experience_list():
             self.Experiment_cBox['values'] = self.current_electrode.get_experiments()
@@ -546,14 +562,16 @@ class App(tk.Tk):
         self.Experiment_cBox = tk.ttk.Combobox(master=frameExperiment,
                                                width=40,
                                                state="disabled",
-                                               postcommand = update_experience_list)
+                                               postcommand=update_experience_list)
 
         self.Experiment_cBox.bind('<<ComboboxSelected>>', lambda event: set_experiment(event))
         self.Experiment_cBox.pack(side=tk.TOP, fill=tk.X)
 
-        add_experiment_btn = tk.Button(master=frameExperiment, text="Add Experiment",state="disabled", command=lambda: add_experiment())
+        add_experiment_btn = tk.Button(master=frameExperiment, text="Add Experiment", state="disabled",
+                                       command=lambda: add_experiment())
         add_experiment_btn.pack(side=tk.TOP, fill=tk.X)
-        del_experiment_btn = tk.Button(master=frameExperiment, text="Delete Experiment", state="disabled", command=lambda: del_experiment())
+        del_experiment_btn = tk.Button(master=frameExperiment, text="Delete Experiment", state="disabled",
+                                       command=lambda: del_experiment())
         del_experiment_btn.pack(side=tk.TOP, fill=tk.X)
 
         def add_experiment():
@@ -569,6 +587,7 @@ class App(tk.Tk):
                     self.print(f"{name} created successfully")
                     self.Experiment_cBox.event_generate('<<ComboboxSelected>>')
                     electrode.save(self.data_path)
+
         def del_experiment():
             name = self.Experiment_cBox.get()
             electrode = self.current_electrode
@@ -581,6 +600,7 @@ class App(tk.Tk):
                 block_tests()
             else:
                 messagebox.showerror('Error', f"{name} doesn't exists in {electrode.name}")
+
         def set_experiment(event):
             experiment_name = self.Experiment_cBox.get()
             if experiment_name not in self.current_electrode.get_experiments():
@@ -592,7 +612,8 @@ class App(tk.Tk):
                 create_Volta_btn["state"] = 'active'
                 self.test_cBox.event_generate('<<ComboboxSelected>>')
                 if self.current_electrode.get_tests(experiment_name)["Titration"].get_df().shape[0] > 0:
-                    self.titration_df = self.current_electrode.get_tests(experiment_name)["Titration"].get_df().sort_values(by=["concentration"])
+                    self.titration_df = self.current_electrode.get_tests(experiment_name)[
+                        "Titration"].get_df().sort_values(by=["concentration"])
                     self.plots.min_pt = list(self.titration_df["concentration"])[0]
                     self.plots.max_pt = list(self.titration_df["concentration"])[-1]
                     self.update_titration_graph = True
@@ -615,10 +636,11 @@ class App(tk.Tk):
         def update_test_list():
             self.test_cBox["values"] = list(self.current_electrode.get_tests(self.Experiment_cBox.get()).keys())
             self.latest_volta_btn["state"] = "active"
+
         self.test_cBox = tk.ttk.Combobox(master=frameExpType,
-                                               width=40,
-                                               state="disabled",
-                                               postcommand=update_test_list)
+                                         width=40,
+                                         state="disabled",
+                                         postcommand=update_test_list)
 
         self.test_cBox.bind('<<ComboboxSelected>>', lambda event: set_test_graph(event))
         self.test_cBox.pack(side=tk.TOP, fill=tk.X)
@@ -626,7 +648,8 @@ class App(tk.Tk):
 
         def set_test_graph(event):
             if self.test_cBox.get() != "":
-                self.raw_data_df = self.current_electrode.get_tests(self.Experiment_cBox.get())[self.test_cBox.get()].get_df()
+                self.raw_data_df = self.current_electrode.get_tests(self.Experiment_cBox.get())[
+                    self.test_cBox.get()].get_df()
                 self.plots.rt_concentration_data["rt concentration"].set_data([], [])
                 self.update_raw_data_graph = True
                 self.to_update_plots = True
@@ -636,16 +659,17 @@ class App(tk.Tk):
         frameTestVariablesGrid.pack(side=tk.TOP, anchor=tk.N)  # div 2
 
         tk.Label(master=frameExpType, text="Results", font=font2).pack(side=tk.TOP)
+
         def update_plot():
             self.to_update_plots = True
 
         self.chkBtn_show_latest_voltammogram_var = tk.IntVar(value=0)
         self.latest_volta_btn = tk.Checkbutton(master=frameExpType,
-                             text="Latest voltammogram",
-                             variable=self.chkBtn_show_latest_voltammogram_var,
-                             command=update_plot,
-                             font=font3,
-                             state="disabled")
+                                               text="Latest voltammogram",
+                                               variable=self.chkBtn_show_latest_voltammogram_var,
+                                               command=update_plot,
+                                               font=font3,
+                                               state="disabled")
 
         self.latest_volta_btn.pack(side=tk.TOP)
 
@@ -681,23 +705,16 @@ class App(tk.Tk):
                 else:
                     self.print(f"Gain is not zero {self.gain_Cbox.get()}")
                     self.Rtia_Ebox["state"] = "normal"
-                    self.Rtia_Ebox.delete(0,"end")
-                    self.Rtia_Ebox.insert(0,0)
+                    self.Rtia_Ebox.delete(0, "end")
+                    self.Rtia_Ebox.insert(0, 0)
                     self.Rtia_Ebox["state"] = "disabled"
             except Exception:
                 debug()
 
-        def change_params():
-            if self.chkBtn_change_param.get():
-                self.check_params = True
-                self.Entry_box["state"] = "normal"
-                self.gain_Cbox["state"] = "readonly"
-            else:
-                self.check_params = False
-                self.Entry_box["state"] = "disabled"
-                self.gain_Cbox["state"] = "disabled"
+        def change_params(test: Test):
+            pass
 
-        def Update_test_variable_frame(test:Test):  # used to set variable list for the test chosen in the combo box self.tests_cbox
+        def Update_test_variable_frame(test: Test):  # used to set variable list for the test chosen in the combo box self.tests_cbox
             for child in frameTest_params_params.winfo_children():
                 child.destroy()
             tk.Label(master=frameTest_params_params, text=test.type, font=font2).pack(side=tk.TOP)
@@ -705,105 +722,162 @@ class App(tk.Tk):
             frameTestVariablesGrid.pack(side=tk.TOP, anchor=tk.N)  # div 2
             index = 0
             self.test_params = {}
-
-            if test.type != 'SWV':
-                state_val1 = "normal"
-                state_val2 = "readonly"
-            else:
-                print('SWV')
-                state_val1 = "disabled"
-                state_val2 = "disabled"
-
-            for variable,value in test.get_params().items():
+            for variable, value in test.get_params().items():
                 self.test_params[variable] = tk.DoubleVar(value=value)
                 tk.Label(master=frameTestVariablesGrid, text=variable, font=font3).grid(row=index, column=0, sticky='W')
-                if variable != "Rload" and variable != "Gain" and variable != "Rtia":
-                    self.Entry_box = tk.Entry(master=frameTestVariablesGrid,
-                                          textvariable=self.test_params[variable],
-                                          width=self.width + 1,
-                                          font=font3,
-                                          justify="center",
-                                          state = state_val1)
-                    self.Entry_box.grid(row=index, column=1, pady=1)
+                if variable != "Rload" and variable != "Gain" and variable != "Rtia" and variable != "RunTime":
+                    Entry_box = tk.Entry(master=frameTestVariablesGrid,
+                                         textvariable=self.test_params[variable],
+                                         width=self.width + 1,
+                                         font=font3,
+                                         justify="center")
+                    Entry_box.grid(row=index, column=1, pady=1)
                 else:
                     if variable == "Rload":
                         Combo_box = tk.ttk.Combobox(master=frameTestVariablesGrid,
                                                     textvariable=self.test_params[variable],
                                                     width=self.width - 2,
                                                     font=font3,
-                                                    values=["10","33","50","100"],
+                                                    values=["10", "33", "50", "100"],
                                                     justify="center",
-                                                    state=state_val2)
+                                                    state="readonly")
                         Combo_box.grid(row=index, column=1, pady=1)
                     elif variable == "Gain":
                         self.gain_Cbox = tk.ttk.Combobox(master=frameTestVariablesGrid,
-                                                        textvariable=self.test_params[variable],
-                                                        width=self.width - 2,
-                                                        font=font3,
-                                                        values=["0","1","2","3","4","5","6","7"],
-                                                        justify="center",
-                                                        state=state_val2)
+                                                         textvariable=self.test_params[variable],
+                                                         width=self.width - 2,
+                                                         font=font3,
+                                                         values=["0", "1", "2", "3", "4", "5", "6", "7"],
+                                                         justify="center",
+                                                         state="readonly")
                         self.gain_Cbox.bind('<<ComboboxSelected>>', lambda event: set_gain(event))
                         self.gain_Cbox.grid(row=index, column=1, pady=1)
                     elif variable == "Rtia":
                         self.Rtia_Ebox = tk.Entry(master=frameTestVariablesGrid,
-                                             textvariable=self.test_params[variable],
-                                             width=self.width + 1,
-                                             font=font3,
-                                             justify="center",
-                                             state="disabled")
+                                                  textvariable=self.test_params[variable],
+                                                  width=self.width + 1,
+                                                  font=font3,
+                                                  justify="center",
+                                                  state="disabled")
                         self.Rtia_Ebox.grid(row=index, column=1, pady=1)
                         self.gain_Cbox.event_generate('<<ComboboxSelected>>')
 
                 index += 1
-
-
-            if test.type !=  'SWV':
-                Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Run Test", command=lambda: run_test(test))
-                Run_test_btn.grid(row=index, columnspan=2, sticky="nesw")
-            else:
+            if test.type == 'SWV':
                 self.chkBtn_change_param = tk.IntVar(value=0)
-                print('create button')
                 change_param_btn = tk.Checkbutton(master=frameTestVariablesGrid,
-                                                       text="Change parameters",
-                                                       variable=self.chkBtn_change_param,
-                                                       command= lambda: change_params(),
-                                                       font=font3,
-                                                       state="normal")
+                                                  text="Change parameters",
+                                                  variable=self.chkBtn_change_param,
+                                                  command=lambda: change_params(
+                                                      self.current_electrode.get_tests(self.Experiment_cBox.get())[
+                                                          test.type]),
+                                                  font=font3,
+                                                  state="normal")
+                change_param_btn.grid(row=index, columnspan=2, column=0, sticky="nesw")
+                time_box = tk.Entry(master=frameTestVariablesGrid,
+                                    textvariable=self.test_params["RunTime"],
+                                    width=self.width + 1,
+                                    font=font3,
+                                    justify="center",
+                                    state="normal")
+                time_box.grid(row=index - 1, column=1, pady=1)
+                Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Run Test",
+                                         command=lambda: run_test(test))
+                Run_test_btn.grid(row=index+1, column=0, sticky="nesw")
+                Continuous_Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active",
+                                                    text="Continuous Run", command=lambda: run_continuous_test(test))
+                Continuous_Run_test_btn.grid(row=index + 2, column=1, sticky="nesw")
+                Stop_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Stop Test",
+                                          command=test.stop_test)
+                Stop_test_btn.grid(row=index + 2, column=2, sticky="nesw")
+            else:
+                Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Run Test",
+                                         command=lambda: run_test(test))
+                Run_test_btn.grid(row=index, columnspan=2, sticky="nesw")
+                Stop_test_btn = tk.Button(master=frameTestVariablesGrid, text="Stop Test", command=test.stop_test)
+                Stop_test_btn.grid(row=index + 1, columnspan=2, sticky="nesw")
 
-                change_param_btn.grid(row=index, columnspan=2, sticky="nesw")
-                Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Run", command=lambda: run_test(test))
-                Run_test_btn.grid(row=index+1, columnspan=2, sticky="nesw")
-
-        create_titration_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create Titration", command=lambda: Create_titration())
-        create_Lovric_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create CV", command=lambda: Create_CV())
-        create_Volta_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create SWV", command=lambda: Create_SWV())
+        create_titration_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create Titration",
+                                         command=lambda: Create_titration())
+        create_Lovric_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create CV",
+                                      command=lambda: Create_CV())
+        create_Volta_btn = tk.Button(master=frameTest_params_btn, state="disabled", text="Create SWV",
+                                     command=lambda: Create_SWV())
         create_titration_btn.grid(row=0, column=0, sticky="nesw")
         create_Lovric_btn.grid(row=0, column=1, sticky="nesw")
         create_Volta_btn.grid(row=0, column=2, sticky="nesw")
 
         def Create_titration():
             Update_test_variable_frame(self.current_electrode.get_tests(self.Experiment_cBox.get())["Titration"])
+
         def Create_CV():
             Update_test_variable_frame(self.current_electrode.get_tests(self.Experiment_cBox.get())["CV"])
+
         def Create_SWV():
             Update_test_variable_frame(self.current_electrode.get_tests(self.Experiment_cBox.get())["SWV"])
-        def run_test(test:Test):
+
+        def run_test_thread(test, comport):
+            self.thread_result = test.run_test(comport, 115200)
+
+        def handle_test_results_delayed(test):
+            while self.thread_result == -1:
+                app.update()  # Allow the GUI to update
+                time.sleep(0.1)  # Sleep for 100ms
+            handle_test_results(test)  # Call handle_test_results once result is not -1
+            self.data_received = True
+
+        def handle_test_results(test):
+            if self.thread_result == 1:
+                self.current_electrode.save(self.data_path)
+                self.print("Test ran successfully")
+            elif not self.continuous_running:
+                messagebox.showerror('Error 2', self.thread_result.__str__())
+            else:
+                if self.thread_result == "Test stopped by user":
+                    messagebox.showerror('Error', self.thread_result.__str__())
+                else:
+                    print('Error', self.thread_result.__str__())
+            self.thread_result = -1
+            self.Experiment_cBox.event_generate('<<ComboboxSelected>>')
+            self.test_cBox.event_generate('<<ComboboxSelected>>')
+            self.volta_slider.set(len(test.get_df()) + 1)
+
+        def run_test(test: Test):
             try:
+                self.thread_result == -1
+                self.data_received = False
                 param = dict([(p[0], p[1].get()) for p in self.test_params.items()])
                 test.update_param(param)
-
-                result = test.run_test(self.comport_cbox.get(),115200)
-                if result == 1:
-                    self.current_electrode.save(self.data_path)
-                    self.print("Test ran successfully")
-                else:
-                    messagebox.showerror('Error', result.__str__())
-                self.Experiment_cBox.event_generate('<<ComboboxSelected>>')
-                self.test_cBox.event_generate('<<ComboboxSelected>>')
-                self.volta_slider.set(len(test.get_df())+1)
+                comport = self.comport_cbox.get()
+                threading.Thread(target=run_test_thread, args=(test, comport)).start()
+                handle_test_results_delayed(test)
             except Exception as e:
-                messagebox.showerror('Error', e.__str__())
+                messagebox.showerror('Error 1', e.__str__())
+
+        def run_continuous_test(test:Test):
+            index = 0
+            test.stop_continuous = False
+            self.continuous_running = True
+
+            def update_gui():
+                app.update()
+
+            def run_test_and_update_gui():
+                try:
+                    run_test(test)
+                    update_gui()
+
+                    if index < test.get_params()["RunTime"] and not test.stop_continuous:
+                        while self.data_received == False:
+                            pass
+                        app.after(2000, run_test_and_update_gui)  # Schedule the next run
+                    else:
+                        self.continuous_running = False
+                except Exception as e:
+                    messagebox.showerror('Error 1', e.__str__())
+
+            run_test_and_update_gui()  # Start the continuous test
+
         frameTest_params_params.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
         frameTest_params_btn.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
 
@@ -844,11 +918,11 @@ class App(tk.Tk):
         frameControlsInfo.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         ################################################################################################################
 
-
     async def register_data_callbacks_bleak(self):
         """Sets up notifications using Bleak, and attaches callbacks"""
         # initialize time variables
-        self.last_transaction_time = datetime.datetime(1999, 1, 1, 0, 0, 0, 0, tzinfo=datetime.timezone.utc)  # to trigger offset adjustment
+        self.last_transaction_time = datetime.datetime(1999, 1, 1, 0, 0, 0, 0,
+                                                       tzinfo=datetime.timezone.utc)  # to trigger offset adjustment
         self.offest_time = datetime.timedelta(days=0, seconds=0, microseconds=0)
         self.time_changed_threshold = 0
 
@@ -869,7 +943,7 @@ class App(tk.Tk):
                 while self.new_data == {}:
                     await waiter.wait_async()
                     continue
-                data = [self.new_data["voltages"],self.new_data["currents"],self.new_data["frequency"]]
+                data = [self.new_data["voltages"], self.new_data["currents"], self.new_data["frequency"]]
                 self.new_data = {}
                 for i in range(len(data[0])):
                     print('hi')
@@ -879,7 +953,8 @@ class App(tk.Tk):
             except Exception:
                 debug()
 
-    async def on_new_data_callback_SWV(self, sender, data: bytearray = bytearray(b'\x01\x02\x03\x04'), data_joined=None):
+    async def on_new_data_callback_SWV(self, sender, data: bytearray = bytearray(b'\x01\x02\x03\x04'),
+                                       data_joined=None):
         try:
             time_delivered = datetime.datetime.now(datetime.timezone.utc)
             if data_joined:
@@ -915,16 +990,18 @@ class App(tk.Tk):
 
                 time_best_effort = transaction.get_min_time_of_transaction_creation() + self.offest_time
 
-            if sender not in  self.SwiftMote_df.get_df_list():  # if data recieved from this sender very first time, create new Dataframe
+            if sender not in self.SwiftMote_df.get_df_list():  # if data recieved from this sender very first time, create new Dataframe
                 self.SwiftMote_df.add_dataframe(sender)
 
             self.SwiftMote_df.add_data_to_df(sender,
-                time_best_effort.timestamp() / 86400,  # days since 1970-01-01 in UTC, this is required for matplotlib
-                time_best_effort.astimezone().strftime("%Y-%m-%d %H:%M:%S:%f"),  # "%Y-%m-%d %H:%M:%S:%f %z"
-                data_joined[0],
-                data_joined[1],
-                data_joined[2]
-                )
+                                             time_best_effort.timestamp() / 86400,
+                                             # days since 1970-01-01 in UTC, this is required for matplotlib
+                                             time_best_effort.astimezone().strftime("%Y-%m-%d %H:%M:%S:%f"),
+                                             # "%Y-%m-%d %H:%M:%S:%f %z"
+                                             data_joined[0],
+                                             data_joined[1],
+                                             data_joined[2]
+                                             )
             self.to_update_plots = True
 
         except ValueError as e:
@@ -983,17 +1060,26 @@ class App(tk.Tk):
                         for i in range(len(self.titration_df['raw_voltages'].iloc[:])):
                             # normalized_gain = list(np.polyval(self.titration_df['normalized_gain'].iloc[i], self.titration_df['raw_voltages'].iloc[i]))
                             # max_gain.append(np.max(normalized_gain))
-                            baseline = list(np.polyval(self.titration_df['baseline'].iloc[i], self.titration_df['raw_voltages'].iloc[i]))
-                            g = self.titration_df['peak_current'].iloc[i] - baseline[list(self.titration_df['raw_currents'].iloc[i]).index(self.titration_df['peak_current'].iloc[i])]
+                            baseline = list(np.polyval(self.titration_df['baseline'].iloc[i],
+                                                       self.titration_df['raw_voltages'].iloc[i]))
+                            g = self.titration_df['peak_current'].iloc[i] - baseline[
+                                list(self.titration_df['raw_currents'].iloc[i]).index(
+                                    self.titration_df['peak_current'].iloc[i])]
                             max_gain.append(g)
                         if self.isHill:
-                            if concentration[concentration.index(self.plots.min_pt)] < concentration[concentration.index(self.plots.max_pt)]:
-                                self.hf = HillFit(concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1],
-                                                  max_gain[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1])
+                            if concentration[concentration.index(self.plots.min_pt)] < concentration[
+                                concentration.index(self.plots.max_pt)]:
+                                self.hf = HillFit(concentration[
+                                                  concentration.index(self.plots.min_pt):concentration.index(
+                                                      self.plots.max_pt) + 1],
+                                                  max_gain[concentration.index(self.plots.min_pt):concentration.index(
+                                                      self.plots.max_pt) + 1])
                                 self.hf.fitting()
                             else:
-                                conc = concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1]
-                                gain = max_gain[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1]
+                                conc = concentration[concentration.index(self.plots.min_pt):concentration.index(
+                                    self.plots.max_pt) + 1]
+                                gain = max_gain[concentration.index(self.plots.min_pt):concentration.index(
+                                    self.plots.max_pt) + 1]
                                 gain.reverse()
                                 self.hf = HillFit(conc, gain)
                                 self.hf.fitting()
@@ -1001,18 +1087,30 @@ class App(tk.Tk):
 
                             self.plots.titration_data["titration"].set_data(concentration, max_gain)
                             self.plots.titration_data["fit"].set_data(self.hf.x_fit, self.hf.y_fit)
-                            self.plots.titration_data["fit"].set_label(f"$R^2$={self.hf.r_2:.3}, k ={self.hf.ec50:.3E}, n ={self.hf.nH:.3E}")
-                            self.plots.titration_data["lims"].set_data([self.plots.min_pt, self.plots.max_pt], [max_gain[concentration.index(self.plots.min_pt)], max_gain[concentration.index(self.plots.max_pt)]])
+                            self.plots.titration_data["fit"].set_label(
+                                f"$R^2$={self.hf.r_2:.3}, k ={self.hf.ec50:.3E}, n ={self.hf.nH:.3E}")
+                            self.plots.titration_data["lims"].set_data([self.plots.min_pt, self.plots.max_pt], [
+                                max_gain[concentration.index(self.plots.min_pt)],
+                                max_gain[concentration.index(self.plots.max_pt)]])
                             self.plots.titration_data["lims"].set_label(f"Hill limits")
 
                         else:
-                            self.linear_coefs = np.polyfit(concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1],max_gain[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1],1)
-                            fit_for_r2 = list(np.polyval(self.linear_coefs, concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1]))
-                            r_2 = r2_score(max_gain[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1], fit_for_r2)
+                            self.linear_coefs = np.polyfit(concentration[
+                                                           concentration.index(self.plots.min_pt):concentration.index(
+                                                               self.plots.max_pt) + 1], max_gain[concentration.index(
+                                self.plots.min_pt):concentration.index(self.plots.max_pt) + 1], 1)
+                            fit_for_r2 = list(np.polyval(self.linear_coefs, concentration[concentration.index(
+                                self.plots.min_pt):concentration.index(self.plots.max_pt) + 1]))
+                            r_2 = r2_score(max_gain[concentration.index(self.plots.min_pt):concentration.index(
+                                self.plots.max_pt) + 1], fit_for_r2)
                             self.plots.titration_data["titration"].set_data(concentration, max_gain)
-                            self.plots.titration_data["fit"].set_data(concentration[concentration.index(self.plots.min_pt):concentration.index(self.plots.max_pt) + 1], fit_for_r2)
-                            self.plots.titration_data["fit"].set_label(f"$R^2$={r_2:.3},a={self.linear_coefs[0]:.3}, b ={self.linear_coefs[1]:.3E}")
-                            self.plots.titration_data["lims"].set_data([self.plots.min_pt, self.plots.max_pt],[max_gain[concentration.index(self.plots.min_pt)], max_gain[concentration.index(self.plots.max_pt)]])
+                            self.plots.titration_data["fit"].set_data(concentration[concentration.index(
+                                self.plots.min_pt):concentration.index(self.plots.max_pt) + 1], fit_for_r2)
+                            self.plots.titration_data["fit"].set_label(
+                                f"$R^2$={r_2:.3},a={self.linear_coefs[0]:.3}, b ={self.linear_coefs[1]:.3E}")
+                            self.plots.titration_data["lims"].set_data([self.plots.min_pt, self.plots.max_pt], [
+                                max_gain[concentration.index(self.plots.min_pt)],
+                                max_gain[concentration.index(self.plots.max_pt)]])
                             self.plots.titration_data["lims"].set_label(f"Linear limits")
 
                         max_x = np.max(max_gain)
@@ -1021,7 +1119,8 @@ class App(tk.Tk):
                         min_concentration = np.min(concentration)
 
                         self.plots.titration.set_ylim(min_x - abs(min_x / 3), max_x + abs(min_x / 3))
-                        self.plots.titration.set_xlim(min_concentration - abs(min_concentration / 3), max_concentration + abs(min_concentration / 3))
+                        self.plots.titration.set_xlim(min_concentration - abs(min_concentration / 3),
+                                                      max_concentration + abs(min_concentration / 3))
                         self.plots.titration.legend().set_visible(True)
                 else:
                     self.plots.reset_titration_graph()
@@ -1029,20 +1128,22 @@ class App(tk.Tk):
                 if self.raw_data_df is not None and len(self.raw_data_df) != 0:
                     length = len(self.raw_data_df)
                     if self.chkBtn_show_latest_voltammogram_var.get():
-                        self.datapoint_select_N = length-1
-                        self.volta_slider.set(self.datapoint_select_N+1)
+                        self.datapoint_select_N = length - 1
+                        self.volta_slider.set(self.datapoint_select_N + 1)
                         self.volta_slider.config(state="disabled", sliderlength=0)
                         self.volta_slider_text.config(text=f"{length}/{length}")
                     else:
                         self.volta_slider.config(state="active")
                         self.volta_slider.config(to=length, sliderlength=30, showvalue=False)
-                        self.datapoint_select_N = self.volta_slider.get()-1 if len(self.raw_data_df) > 0 else 0
-                        self.volta_slider_text.config(text=f"{self.datapoint_select_N+1}/{length}")
+                        self.datapoint_select_N = self.volta_slider.get() - 1 if len(self.raw_data_df) > 0 else 0
+                        self.volta_slider_text.config(text=f"{self.datapoint_select_N + 1}/{length}")
 
-                ################################################ change time format on axes ###################################
+                    ################################################ change time format on axes ###################################
                     if self.update_raw_data_graph == True:
-                        self.plots.rt_concentration.get_xaxis().set_major_formatter(matplotlib.dates.DateFormatter('%y-%m-%d %H:%M:%S', tz=tz.gettz('America/Montreal')))
-                        self.plots.rt_peak.get_xaxis().set_major_formatter(matplotlib.dates.DateFormatter('', tz=tz.gettz('America/Montreal')))
+                        self.plots.rt_concentration.get_xaxis().set_major_formatter(
+                            matplotlib.dates.DateFormatter('%y-%m-%d %H:%M:%S', tz=tz.gettz('America/Montreal')))
+                        self.plots.rt_peak.get_xaxis().set_major_formatter(
+                            matplotlib.dates.DateFormatter('', tz=tz.gettz('America/Montreal')))
                         _time = self.raw_data_df['time'].tolist()
 
                         ############################################### Voltammogram Graph ######################################
@@ -1053,16 +1154,20 @@ class App(tk.Tk):
                         baseline = []
                         normalized_gain = []
                         for i in range(len(self.raw_data_df['raw_voltages'].iloc[:])):
-                            baseline.append(list(np.polyval(self.raw_data_df['baseline'].iloc[i],self.raw_data_df['raw_voltages'].iloc[i])))
-                            normalized_gain.append(list(np.polyval(self.raw_data_df['normalized_gain'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i])))
+                            baseline.append(list(np.polyval(self.raw_data_df['baseline'].iloc[i],
+                                                            self.raw_data_df['raw_voltages'].iloc[i])))
+                            normalized_gain.append(list(np.polyval(self.raw_data_df['normalized_gain'].iloc[i],
+                                                                   self.raw_data_df['raw_voltages'].iloc[i])))
 
                         self.plots.volt_graph_data["baseline"].set_data(
-                            self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N],baseline[self.datapoint_select_N])
+                            self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N],
+                            baseline[self.datapoint_select_N])
 
                         # self.plots.gain_data["Gain"].set_data(self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N],normalized_gain[self.datapoint_select_N])
 
                         # Red line to show peak on voltammogram
-                        index = normalized_gain[self.datapoint_select_N].index(max(normalized_gain[self.datapoint_select_N]))
+                        index = normalized_gain[self.datapoint_select_N].index(
+                            max(normalized_gain[self.datapoint_select_N]))
 
                         self.plots.volt_graph.set_xlim(
                             self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][0],
@@ -1103,7 +1208,7 @@ class App(tk.Tk):
                         self.plots.rt_peak_data["rt Peaks min"].set_data(_time, _half_height1)
                         self.plots.rt_peak.set_xlim(min(_time), max(_time))
                         self.plots.rt_peak.set_ylim(self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][0],
-                                                                  self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][-1])
+                                                    self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][-1])
 
                         ########################################## rt Concentration ##########################################
                         if self.test_cBox.get() != 'CV':
@@ -1114,28 +1219,36 @@ class App(tk.Tk):
                                     # normalized_gain = list(np.polyval(self.raw_data_df['normalized_gain'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i]))
                                     # maximum_gain = np.max(normalized_gain)
                                     #
-                                    baseline = list(np.polyval(self.raw_data_df['baseline'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i]))
-                                    g = self.raw_data_df['peak_current'].iloc[i] - baseline[list(self.raw_data_df['raw_currents'].iloc[i]).index(self.raw_data_df['peak_current'].iloc[i])]
+                                    baseline = list(np.polyval(self.raw_data_df['baseline'].iloc[i],
+                                                               self.raw_data_df['raw_voltages'].iloc[i]))
+                                    g = self.raw_data_df['peak_current'].iloc[i] - baseline[
+                                        list(self.raw_data_df['raw_currents'].iloc[i]).index(
+                                            self.raw_data_df['peak_current'].iloc[i])]
                                     maximum_gain = g
 
                                     if self.isHill:
                                         top, bottom, ec50, nH = self.hf.params
                                         if bottom <= maximum_gain <= top:
-                                            if not np.isnan(ec50 * (((bottom - maximum_gain) / (maximum_gain - top)) ** (1 / nH))):
-                                                real_concentration.append(ec50 * (((bottom - maximum_gain) / (maximum_gain - top)) ** (1 / nH)))
+                                            if not np.isnan(ec50 * (
+                                                    ((bottom - maximum_gain) / (maximum_gain - top)) ** (1 / nH))):
+                                                real_concentration.append(ec50 * (
+                                                            ((bottom - maximum_gain) / (maximum_gain - top)) ** (
+                                                                1 / nH)))
                                                 _t.append(_time[i])
                                     else:
-                                        c = (maximum_gain - self.linear_coefs[1])/self.linear_coefs[0]
+                                        c = (maximum_gain - self.linear_coefs[1]) / self.linear_coefs[0]
                                         real_concentration.append(c)
                                         _t.append(_time[i])
                                     if self.test_cBox.get() == 'SWV':
                                         self.raw_data_df['concentration'].iloc[i] = real_concentration[-1]
 
                                 if len(real_concentration) > 0:
-                                    self.plots.rt_concentration.set_ylim(min(real_concentration), max(real_concentration))
+                                    self.plots.rt_concentration.set_ylim(min(real_concentration),
+                                                                         max(real_concentration))
                                     self.plots.rt_concentration.set_xlim(min(_t), max(_t))
                                     self.plots.rt_peak.set_xlim(min(_t), max(_t))
-                                    self.plots.rt_concentration_data["rt concentration"].set_data(_t, real_concentration)
+                                    self.plots.rt_concentration_data["rt concentration"].set_data(_t,
+                                                                                                  real_concentration)
 
                             except Exception:
                                 debug()
@@ -1147,13 +1260,13 @@ class App(tk.Tk):
 
                 if self.toggle_cursor:
                     self.cursors_v['peak_voltage_3'].set_data(
-                        [ self.raw_data_df['peak_voltage'].iloc[self.datapoint_select_N],
-                          self.raw_data_df['peak_voltage'].iloc[self.datapoint_select_N]], [0, 1])
+                        [self.raw_data_df['peak_voltage'].iloc[self.datapoint_select_N],
+                         self.raw_data_df['peak_voltage'].iloc[self.datapoint_select_N]], [0, 1])
 
                     self.cursors_h['peak_current_3'].set_data(
                         [0, 1],
-                        [ self.raw_data_df['peak_current'].iloc[self.datapoint_select_N],
-                          self.raw_data_df['peak_current'].iloc[self.datapoint_select_N]])
+                        [self.raw_data_df['peak_current'].iloc[self.datapoint_select_N],
+                         self.raw_data_df['peak_current'].iloc[self.datapoint_select_N]])
             except Exception as e:
                 debug()
                 pass
@@ -1247,21 +1360,24 @@ class App(tk.Tk):
                 save_temp = {}
                 for df in self.curr_Titration_df.get_df_list():
                     save_temp[df] = self.curr_Titration_df.get_df_data(df).to_dict(orient='index')
-                with open(f"{self.output_path}\\{date}\\titrations\\autosave.json", 'w') as f:  # overwrite previous autosave
+                with open(f"{self.output_path}\\{date}\\titrations\\autosave.json",
+                          'w') as f:  # overwrite previous autosave
                     json.dump(save_temp, f, indent=4, default=str)
                     f.close()
 
                 save_temp = {}
                 for df in self.curr_Experiment_df.get_df_list():
                     save_temp[df] = self.curr_Experiment_df.get_df_data(df).to_dict(orient='index')
-                with open(f"{self.output_path}\\{date}\\experiments\\autosave.json", 'w') as f:  # overwrite previous autosave
+                with open(f"{self.output_path}\\{date}\\experiments\\autosave.json",
+                          'w') as f:  # overwrite previous autosave
                     json.dump(save_temp, f, indent=4, default=str)
                     f.close()
 
                 save_temp = {}
                 for df in self.SwiftMote_df.get_df_list():
                     save_temp[df] = self.SwiftMote_df.get_df_data(df).to_dict(orient='index')
-                with open(f"{self.output_path}\\{date}\\SW_experiments\\autosave.json", 'w') as f:  # overwrite previous autosave
+                with open(f"{self.output_path}\\{date}\\SW_experiments\\autosave.json",
+                          'w') as f:  # overwrite previous autosave
                     json.dump(save_temp, f, indent=4, default=str)
                     f.close()
 
@@ -1286,6 +1402,7 @@ class App(tk.Tk):
         self.info_screen.yview_scroll(int(float(self.info_screen.index(tk.INSERT))), tk.UNITS)
         self.scroll_bar.set(float(self.info_screen.index(tk.INSERT)) - 20, float(self.info_screen.index(tk.INSERT)))
         self.info_screen.config(state='disabled')
+
 
 class BLE_connector:
     def __init__(self, address="", to_connect=True):
@@ -1552,8 +1669,9 @@ class Packet:
 
         for i in range(number_of_datapoints):
             self.datapoints[i] = struct.unpack('<H',
-                                               self.data[self.metadata_length_total_bytes + self.datapoint_length_bytes * i:
-                                                         self.metadata_length_total_bytes + self.datapoint_length_bytes * (i + 1)
+                                               self.data[
+                                               self.metadata_length_total_bytes + self.datapoint_length_bytes * i:
+                                               self.metadata_length_total_bytes + self.datapoint_length_bytes * (i + 1)
                                                ])[0]
 
     def get_datapoints(self):
