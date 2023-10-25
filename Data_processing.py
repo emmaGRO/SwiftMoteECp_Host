@@ -150,7 +150,7 @@ def extract_gains(voltages: list[float], currents:list[float]) -> dict:
         data_baseline = [current for current in baseline_coeff(voltages)]
         normalized_gain = list([(data_smooth[i] - data_baseline[i])/data_baseline[i] for i in range(len(data_smooth))])
         #max_gain_index = normalized_gain.index(np.max(normalized_gain))
-        max_gain_index = 249
+        max_gain_index = 235
 
         ######################################################## half heigth width #############################################################################
         half_gain = np.max(normalized_gain) / 2

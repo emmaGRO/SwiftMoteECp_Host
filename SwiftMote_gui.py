@@ -1,7 +1,9 @@
 import asyncio
+import cProfile
 import importlib
 import json
 import math
+import pstats
 import struct
 import tkinter.tix
 import warnings
@@ -786,10 +788,10 @@ class App(tk.Tk):
                 Run_test_btn.grid(row=index+1, column=0, sticky="nesw")
                 Continuous_Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active",
                                                     text="Continuous Run", command=lambda: run_continuous_test(test))
-                Continuous_Run_test_btn.grid(row=index + 2, column=1, sticky="nesw")
+                Continuous_Run_test_btn.grid(row=index + 1, column=1, sticky="nesw")
                 Stop_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Stop Test",
                                           command=test.stop_test)
-                Stop_test_btn.grid(row=index + 2, column=2, sticky="nesw")
+                Stop_test_btn.grid(row=index + 1, column=2, sticky="nesw")
             else:
                 Run_test_btn = tk.Button(master=frameTestVariablesGrid, state="active", text="Run Test",
                                          command=lambda: run_test(test))
@@ -855,7 +857,6 @@ class App(tk.Tk):
                 messagebox.showerror('Error 1', e.__str__())
 
         def run_continuous_test(test:Test):
-            index = 0
             test.stop_continuous = False
             self.continuous_running = True
 
@@ -866,11 +867,11 @@ class App(tk.Tk):
                 try:
                     run_test(test)
                     update_gui()
-
+                    index = 0
                     if index < test.get_params()["RunTime"] and not test.stop_continuous:
                         while self.data_received == False:
                             pass
-                        app.after(2000, run_test_and_update_gui)  # Schedule the next run
+                        app.after(5000, run_test_and_update_gui)  # Schedule the next run
                     else:
                         self.continuous_running = False
                 except Exception as e:

@@ -25,7 +25,7 @@ class Plot():
                                 "baseline": self.volt_graph.plot([], [], '-', color='c')[0]}
         
         self.gain = self.volt_graph.twinx()
-        self.gain.set_ylabel("Normalized gain (%)", color='b')
+        #self.gain.set_ylabel("Normalized gain (%)", color='b')
         self.gain_data = {
                       "Gain": self.gain.plot([], [], '-', color='b')[0],
                       "PeakX": self.gain.plot([], [], '-', color='r')[0],

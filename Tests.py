@@ -225,22 +225,28 @@ class SWV(Test):
         while not self.stop_test_flag:
             try:
                 if int(ser.inWaiting()) > 0:
-                    line = ser.read(size=ser.inWaiting()).decode()
-                    print(line)
-                    if line.find("Done") >= 0:
-                        break
-                    elif line.find("time:") >= 0:
-                        lst = line.split(",")
-                        _time.append(float(lst[0].split(":")[1]))
-                        _voltage.append(float(lst[1].split(":")[1]))
-                        _current_value = lst[2].split(":")[1].strip()  # Remove unwanted characters
-                        # Try to convert the cleaned string to a float
-                        try:
-                            _current.append(float(_current_value))
-                        except ValueError:
-                            print(_current_value)
-                            print(_current_value.split("/"))
+                    data = ser.read(size=ser.inWaiting()).decode()
+                    lines = data.split('\n')
 
+                    for line in lines:
+                        print("new line: ", line)
+                        line = line.strip()
+                        if "Done" in line:
+                            return self.add_result(_index, dt, _voltage, _current, self.parameters["Frequency"])
+                        elif "time:" in line:
+                            lst = line.split(",")
+                            _time.append(float(lst[0].split(":")[1]))
+                            _voltage.append(float(lst[1].split(":")[1]))
+                            _current_value = lst[2].split(":")[1].strip()  # Remove unwanted characters
+                            # Try to convert the cleaned string to a float
+                            try:
+                                _current.append(float(_current_value))
+                            except ValueError:
+                                print('VALUE ERROR')
+                                print(_current_value)
+                                print(_current_value.split("/"))
+                        else:
+                            break
             except Exception:
                 return debug()
         if self.stop_test_flag:
