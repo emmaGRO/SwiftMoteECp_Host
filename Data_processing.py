@@ -1,4 +1,4 @@
-import  numpy as np
+import numpy as np
 from scipy.signal import savgol_filter
 from numpy import diff
 from Utils import debug
@@ -8,9 +8,10 @@ from typing import Union
 from tkinter import messagebox
 from scipy.optimize import curve_fit
 from sklearn.metrics import r2_score
+from scipy.interpolate import CubicSpline
 
 
-def load_experiment(master,filepath:str,df_type:str, exp_name:str):
+def load_experiment(master, filepath:str,df_type:str, exp_name:str):
     master.print(f"Loading {exp_name}")
     try:
         try:
@@ -60,8 +61,10 @@ def load_experiment(master,filepath:str,df_type:str, exp_name:str):
         return 0
 
 def extract_gains(voltages: list[float], currents:list[float]) -> dict:
-    voltages = voltages[10:-10]
-    currents = currents[10:-10]
+    border = 20
+    zeros_trim = np.zeros(border)
+    voltages = voltages[border:]
+    currents = currents[border:]
     def get_peaks_and_valleys(values: list, offset: int):
         dt_peaks = []
         for val in values[1:]:
@@ -75,25 +78,21 @@ def extract_gains(voltages: list[float], currents:list[float]) -> dict:
                 return debug()
         return dt_peaks
     ############################################# determination of the peak current#######################################################################
-    win_length = round(len(currents) / 4)
-    if win_length % 2 == 0:
-        win_length += 1
-    poly = 6
-    # noise = np.random.normal(-1e-9, 1e-9, len(currents))
-    currents = currents #+ noise
-    data_smooth = currents
+    currents = currents  # + noise
+    model = np.poly1d(np.polyfit(voltages, currents, 6))
+    data_smooth = model(voltages)
     count = 0
     try:
         while count < 10:
-            temp = [dt_smooth for dt_smooth in list(savgol_filter(data_smooth, window_length=win_length, polyorder=poly, mode='mirror'))]
+            temp = [dt_smooth for dt_smooth in list(data_smooth)]
             data_smooth = temp
-            count +=1
+            count += 1
 
     except ValueError:
         return debug()
 
     # isolating the "bump" from smoothed values
-    dt_current = [current for current in list(savgol_filter([i for i in diff(data_smooth)], win_length, polyorder=poly, mode='mirror'))]
+    dt_current = [current for current in list([i for i in diff(data_smooth)])]
     bump_start = dt_current.index(max(dt_current))
     bump_end = dt_current.index(min(dt_current))
     # get zero between min and max, which represent the peak's index
@@ -104,53 +103,65 @@ def extract_gains(voltages: list[float], currents:list[float]) -> dict:
     else:
         zero_index = bump_start
     ################################# approximation of start and end of bump by derivative ##############################################################
-    bump_start = data_smooth.index(data_smooth[100])
-    bump_end = data_smooth.index(data_smooth[400])
-    # dt = dt_current
-    # bump_start = zero_index
-    # bump_end = zero_index
-    # count = 0
-    # poly = 3
-    # isBefore = True
-    # isAfter = True
-    # err = 0.1
-    # while count <= 10:
-    #     temp = [current for current in list(savgol_filter(diff(dt), win_length, polyorder=poly, mode='mirror'))]
-    #     try:
-    #         if isBefore:
-    #             temp_ind = bump_start
-    #             peaks_before = get_peaks_and_valleys(temp[:bump_start], 0)
-    #             bump_start = max(x for x in peaks_before if x < bump_start)
-    #             difference = (data_smooth[temp_ind] - data_smooth[bump_start]) / data_smooth[temp_ind]
-    #             if difference < err:
-    #                 isBefore = False
-    #     except Exception:
-    #         pass
-    #     try:
-    #         if isAfter:
-    #             temp_ind = bump_end
-    #             peaks_after = get_peaks_and_valleys(temp[zero_index:], zero_index)
-    #             bump_end = min(x for x in peaks_after if x > bump_end)
-    #             difference = (data_smooth[temp_ind] - data_smooth[bump_end]) / data_smooth[temp_ind]
-    #             if difference < err:
-    #                 isAfter = False
-    #     except Exception:
-    #         pass
-    #     if not isBefore and not isAfter:
-    #         break
-    #
-    #     dt = temp
-    #     count += 1
+    # bump_start = data_smooth.index(data_smooth[24])
+    # bump_end = data_smooth.index(data_smooth[130])
+    dt = dt_current
+    bump_start = zero_index
+    bump_end = zero_index
+    count = 0
+    isBefore = True
+    isAfter = True
+    err = 0.1
+    while count <= 10:
+        temp = [current for current in dt]
+        try:
+            if isBefore:
+                temp_ind = bump_start
+                peaks_before = get_peaks_and_valleys(temp[:bump_start], 0)
+                bump_start = max(x for x in peaks_before if x < bump_start)
+                difference = (data_smooth[temp_ind] - data_smooth[bump_start]) / data_smooth[temp_ind]
+                if difference < err:
+                    isBefore = False
+        except Exception:
+            pass
+        try:
+            if isAfter:
+                temp_ind = bump_end
+                peaks_after = get_peaks_and_valleys(temp[zero_index:], zero_index)
+                bump_end = min(x for x in peaks_after if x > bump_end)
+                difference = (data_smooth[temp_ind] - data_smooth[bump_end]) / data_smooth[temp_ind]
+                if difference < err:
+                    isAfter = False
+        except Exception:
+            pass
+        if not isBefore and not isAfter:
+            break
 
+        dt = temp
+        count += 1
+
+    print("BUMP", bump_start, " ", bump_end)
     #################################### create baseline by adding values between start and end of bump#####################################################
+
+    win_length = 21
+    poly = 1
+    # noise = np.random.normal(-1e-9, 1e-9, len(currents))
+
+    data_sav = savgol_filter(currents, window_length=win_length, polyorder=poly, mode='mirror')
+
     try:
-        currents_split = np.append(data_smooth[:bump_start], data_smooth[bump_end:])
+        currents_split = np.append(data_sav[:bump_start], data_sav[bump_end:])
         voltages_split = np.append(voltages[:bump_start], voltages[bump_end:])
-        baseline_coeff = np.poly1d(np.polyfit(voltages_split, currents_split, 2))
-        data_baseline = [current for current in baseline_coeff(voltages)]
-        normalized_gain = list([(data_smooth[i] - data_baseline[i])/data_baseline[i] for i in range(len(data_smooth))])
-        #max_gain_index = normalized_gain.index(np.max(normalized_gain))
-        max_gain_index = 235
+
+        baseline_coeff = np.polyfit(voltages_split, currents_split, 1)  # Using degree 1 for linear fit
+        data_baseline = np.polyval(baseline_coeff, voltages)
+
+        # baseline_coeff = np.poly1d(np.polyfit(voltages_split, currents_split, 2))
+        # data_baseline = [current for current in baseline_coeff(voltages)]
+
+        # normalized_gain = list([(data_smooth[i] - data_baseline[i])/data_baseline[i] for i in range(len(data_smooth))])
+        normalized_gain = list([(data_sav[i] - data_baseline[i]) for i in range(len(data_sav))])
+        max_gain_index = data_smooth.index(np.max(data_smooth))
 
         ######################################################## half heigth width #############################################################################
         half_gain = np.max(normalized_gain) / 2
@@ -163,10 +174,36 @@ def extract_gains(voltages: list[float], currents:list[float]) -> dict:
     except Exception:
         return debug()
     else:
+        # Assuming max_gain_index is the index of the peak
+        left_index = max_gain_index - 1
+        right_index = max_gain_index + 1
+        p_difference_left = ((normalized_gain[max_gain_index] - normalized_gain[left_index]) /
+                                       normalized_gain[left_index]) * 100
+        p_difference_right = ((normalized_gain[max_gain_index] - normalized_gain[right_index]) /
+                                       normalized_gain[right_index]) * 100
+
+        print(f"Percentage Difference with Left Neighbor: {p_difference_left}%")
+        print(f"Percentage Difference with Right Neighbor: {p_difference_right}%")
+
+        peak_current = normalized_gain[max_gain_index]
+        if p_difference_left < -1 or p_difference_right < -1:
+            # If both are above 1, average with the larger difference
+            if p_difference_left < -1 and p_difference_right < -1:
+                if p_difference_left < p_difference_right:
+                    peak_current = (normalized_gain[max_gain_index] + normalized_gain[left_index]) / 2
+                else:
+                    peak_current = (normalized_gain[max_gain_index] + normalized_gain[right_index]) / 2
+            # If only one is above 1, average with that neighbor
+            elif p_difference_left < -1:
+                peak_current = (normalized_gain[max_gain_index] + normalized_gain[left_index]) / 2
+            elif p_difference_right < -1:
+                peak_current = (normalized_gain[max_gain_index] + normalized_gain[right_index]) / 2
+
         gain_coeff = np.poly1d(np.polyfit(voltages, normalized_gain, 6))
         return {"gain coefs":gain_coeff,
                 "baseline coefs":baseline_coeff,
-                "peak current": currents[max_gain_index],
+                "peak current": peak_current,
+                "smooth_data": np.concatenate([zeros_trim, data_sav]),
                 "peak voltage": voltages[max_gain_index],
                 "half-height voltages": [voltages[pt1], voltages[pt2]]}
 

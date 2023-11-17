@@ -3,10 +3,13 @@ import matplotlib.pyplot as plt
 from Utils import debug
 from dateutil import tz
 import tkinter as tk
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg,NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import numpy as np
 
 class Plot():
+    prev_min_pt = None
+    prev_max_pt = None
+
     def __init__(self,master,frame):
         """Initializes plots
                 param self: reference to parent object
@@ -22,6 +25,7 @@ class Plot():
         ######################################################## voltammogram graph ###############################################################
         self.volt_graph = self.fig.add_subplot(2, 2, 1)
         self.volt_graph_data = {"raw_data": self.volt_graph.plot([], [], '-', color='g')[0],
+                                "smooth_data": self.volt_graph.plot([], [], '-', color='r')[0],
                                 "baseline": self.volt_graph.plot([], [], '-', color='c')[0]}
         
         self.gain = self.volt_graph.twinx()
@@ -115,6 +119,11 @@ class Plot():
                                 self.min_pt = conc_
                             else:
                                 self.max_pt = conc_
+
+                            print("Updating range")
+                            Plot.prev_min_pt = self.min_pt
+                            Plot.prev_max_pt = self.max_pt
+
                         master.update_titration_graph = True
                         master.to_update_plots = True
             except Exception as e:
@@ -149,6 +158,7 @@ class Plot():
 
     def reset_rt_graphs(self):
         self.volt_graph_data["raw_data"].set_data([], [])
+        self.volt_graph_data["smooth_data"].set_data([], [])
         self.volt_graph_data["baseline"].set_data([], [])
         self.gain_data["Gain"].set_data([], [])
         self.gain_data["PeakX"].set_data([], [])

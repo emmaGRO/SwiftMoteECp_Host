@@ -36,6 +36,7 @@ class Test:
                 "peak_voltage",
                 "peak_current",
                 "half_heigths",
+                "smooth_data",
                 "concentration",
                 "frequency"
             ])
@@ -69,6 +70,7 @@ class Test:
                 data["peak voltage"],
                 data["peak current"],
                 data["half-height voltages"],
+                list(data["smooth_data"]),
                 concentration,
                 frequency
             ]
@@ -212,10 +214,10 @@ class SWV(Test):
         ser = serial.Serial(port=comport, baudrate=baudrate)
         ser.read_all()
         data = "SWV,"
-        print(f"SWV data:")
+        # print(f"SWV data:")
         for param, value in self.parameters.items():
             data = data + f"{param}:{value},"
-            print(f"{param}:{value},")
+        #     print(f"{param}:{value},")
         data = data[:-1]
         ser.write(data.encode())
         _time = []
@@ -229,7 +231,6 @@ class SWV(Test):
                     lines = data.split('\n')
 
                     for line in lines:
-                        print("new line: ", line)
                         line = line.strip()
                         if "Done" in line:
                             return self.add_result(_index, dt, _voltage, _current, self.parameters["Frequency"])
@@ -237,6 +238,7 @@ class SWV(Test):
                             lst = line.split(",")
                             _time.append(float(lst[0].split(":")[1]))
                             _voltage.append(float(lst[1].split(":")[1]))
+                            print("voltage: ", float(lst[1].split(":")[1]))
                             _current_value = lst[2].split(":")[1].strip()  # Remove unwanted characters
                             # Try to convert the cleaned string to a float
                             try:

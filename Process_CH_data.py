@@ -97,7 +97,6 @@ def find_data_filepath():
     if os.path.isdir(filepath):
         return filepath
 
-
 def find_concentration_file():
     filepath = filedialog.askopenfilename(title="Please Select CH concentration file", filetypes=(("text files", "*.txt"),))
     if os.path.isfile(filepath):

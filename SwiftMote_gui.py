@@ -10,6 +10,7 @@ import warnings
 import time
 import threading
 import queue
+import re
 
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
@@ -27,6 +28,7 @@ import datetime
 import serial.tools.list_ports
 from Tests import Test
 from Plots import Plot
+from Titrations import titration
 
 from memory_profiler import profile
 
@@ -55,6 +57,7 @@ class App(tk.Tk):
         """:param loop: parent event loop for asynchronous execution, it is not unique in this app"""
         super().__init__()
 
+        self.Titration_cBox = None
         self.new_data = {}
         self.loop = loop
         self.toggle_cursor = False
@@ -63,9 +66,11 @@ class App(tk.Tk):
         self.path_list = []
         self.output_path = os.getcwd() + "\\output"
         self.data_path = os.getcwd() + "\\data"
+        self.titration_path = os.getcwd() + "\\data_titration"
         self.create_directories([self.output_path, self.data_path])
 
         self.electrode_list = {}
+        self.titration_list = {}
         self.current_electrode = None
         self.raw_data_df = None
         self.update_raw_data_graph = False
@@ -452,6 +457,11 @@ class App(tk.Tk):
                                    highlightthickness=0)  # div
         tk.Label(master=frameExperiment, text="Experiment", font=font2).pack(side=tk.TOP)
 
+        frameTitration = tk.Frame(master=frameExperiment,
+                                   highlightbackground="black",
+                                   highlightthickness=0)  # div
+        tk.Label(master=frameTitration, text="Load Titration", font=font2).pack(side=tk.TOP)
+
         frameExpType = tk.Frame(master=frameExperiment,
                                 highlightbackground="black",
                                 highlightthickness=0)  # div
@@ -514,6 +524,13 @@ class App(tk.Tk):
             with open(f"{self.data_path}\\{name}", "rb") as f:
                 self.electrode_list[name] = pickle.load(f)
 
+
+        def load_titration(name):
+            self.update_titration_graph = True
+            with open(f"{self.titration_path}\\{name}", "rb") as f:
+                self.titration_list[name] = pickle.load(f)
+
+
         def set_electrode(event):
             electrode_name = self.Electrode_cBox.get()
             # if electrode_name not in self.electrode_list.keys():
@@ -529,6 +546,8 @@ class App(tk.Tk):
             self.to_update_plots = True
             add_experiment_btn['state'] = "active"
             del_experiment_btn['state'] = "active"
+            save_titration_btn['state'] = "active"
+
 
         def set_new_electrode():
             electrode_name = self.Electrode_cBox.get()
@@ -575,6 +594,45 @@ class App(tk.Tk):
         del_experiment_btn = tk.Button(master=frameExperiment, text="Delete Experiment", state="disabled",
                                        command=lambda: del_experiment())
         del_experiment_btn.pack(side=tk.TOP, fill=tk.X)
+        save_titration_btn = tk.Button(master=frameExperiment, text="Save Titration", state="disabled",
+                                       command=lambda: save_titration())
+        save_titration_btn.pack(side=tk.TOP, fill=tk.X)
+
+        # ############################# Titration selection from file ######################################################
+        def update_titration_list():
+            titr_list = list(os.listdir(f"{self.titration_path}"))
+            self.Titration_cBox['values'] = titr_list
+
+        def set_titration(event):
+            file_name = self.Titration_cBox.get()
+            match = re.match(r"^(.*)\((.*)\)\.csv$", file_name)
+            if match:
+                electrode_name = match.group(1)
+                titration_name = match.group(2)
+            else:
+                titration_name = file_name
+            self.titration_df = None
+            if file_name:
+                load_titration(titration_name)
+                self.current_titration = self.titration_list[file_name]
+                self.titration_df = self.current_titration.get_df().sort_values(by=["concentration"])
+                if self.plots.prev_min_pt is None:
+                    self.plots.min_pt = list(self.titration_df["concentration"])[0]
+                    self.plots.max_pt = list(self.titration_df["concentration"])[-1]
+                # self.test_cBox.set("")
+                # self.latest_volta_btn["state"] = "disabled"
+                # self.raw_data_df = None
+                self.to_update_plots = True
+            pass
+
+        self.Titration_cBox = tk.ttk.Combobox(master=frameTitration,
+                                               width=40,
+                                               state="disabled",
+                                               postcommand=update_titration_list)
+
+        self.Titration_cBox.bind('<<ComboboxSelected>>', lambda event: set_titration(event))
+        self.Titration_cBox.pack(side=tk.TOP, fill=tk.X)
+        frameTitration.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
 
         def add_experiment():
             if self.Experiment_cBox.get() == "":
@@ -603,7 +661,21 @@ class App(tk.Tk):
             else:
                 messagebox.showerror('Error', f"{name} doesn't exists in {electrode.name}")
 
+        def save_titration():
+            if self.Experiment_cBox.get() == "":
+                messagebox.showerror('Error', f'please select an experiment')
+            else:
+                exper_name = self.Experiment_cBox.get()
+                electrode_name = self.Electrode_cBox.get()
+                name = f"{electrode_name}({exper_name}).csv"
+                folder = str((f"{self.titration_path}"))
+                # Create titration
+                titr = titration(electrode_name, exper_name, folder, self.titration_df)
+                self.titration_list[name] = titr
+                titr.save(folder)
+
         def set_experiment(event):
+            self.titration_df = None
             experiment_name = self.Experiment_cBox.get()
             if experiment_name not in self.current_electrode.get_experiments():
                 self.print(f"{experiment_name} doesn't exist")
@@ -614,11 +686,13 @@ class App(tk.Tk):
                 create_Volta_btn["state"] = 'active'
                 self.test_cBox.event_generate('<<ComboboxSelected>>')
                 if self.current_electrode.get_tests(experiment_name)["Titration"].get_df().shape[0] > 0:
-                    self.titration_df = self.current_electrode.get_tests(experiment_name)[
-                        "Titration"].get_df().sort_values(by=["concentration"])
+                    self.titration_df = self.current_electrode.get_tests(experiment_name)["Titration"].get_df().sort_values(by=["concentration"])
                     self.plots.min_pt = list(self.titration_df["concentration"])[0]
                     self.plots.max_pt = list(self.titration_df["concentration"])[-1]
                     self.update_titration_graph = True
+                    self.Titration_cBox['state'] = 'disabled'
+                else:
+                    self.Titration_cBox['state'] = 'active'
             self.to_update_plots = True
 
         frameExperiment.pack(side=tk.TOP, fill=tk.BOTH, expand=False)
@@ -832,6 +906,7 @@ class App(tk.Tk):
             if self.thread_result == 1:
                 self.current_electrode.save(self.data_path)
                 self.print("Test ran successfully")
+                app.update()
             elif not self.continuous_running:
                 messagebox.showerror('Error 2', self.thread_result.__str__())
             else:
@@ -841,6 +916,7 @@ class App(tk.Tk):
                     print('Error', self.thread_result.__str__())
             self.thread_result = -1
             self.Experiment_cBox.event_generate('<<ComboboxSelected>>')
+            self.Titration_cBox.event_generate('<<ComboboxSelected>>')
             self.test_cBox.event_generate('<<ComboboxSelected>>')
             self.volta_slider.set(len(test.get_df()) + 1)
 
@@ -871,7 +947,7 @@ class App(tk.Tk):
                     if index < test.get_params()["RunTime"] and not test.stop_continuous:
                         while self.data_received == False:
                             pass
-                        app.after(5000, run_test_and_update_gui)  # Schedule the next run
+                        app.after(3000, run_test_and_update_gui)  # Schedule the next run
                     else:
                         self.continuous_running = False
                 except Exception as e:
@@ -947,7 +1023,6 @@ class App(tk.Tk):
                 data = [self.new_data["voltages"], self.new_data["currents"], self.new_data["frequency"]]
                 self.new_data = {}
                 for i in range(len(data[0])):
-                    print('hi')
                     self.print(str(data[0][i]) + ', ' + str(data[1][i]))
                 await self.on_new_data_callback_SWV(sender=self.sender_SWV, data_joined=data)
 
@@ -1055,18 +1130,21 @@ class App(tk.Tk):
                 self.to_update_plots = False
                 ######################################## Titration Graph ###################################################
                 if self.titration_df is not None:
+                    if self.plots.prev_min_pt is not None:
+                        Plot.prev_min_pt = self.plots.min_pt
+                    if self.plots.prev_max_pt is not None:
+                        self.plots.max_pt = Plot.prev_max_pt
+
                     if self.update_titration_graph:
                         concentration = list(self.titration_df['concentration'])
                         max_gain = []
                         for i in range(len(self.titration_df['raw_voltages'].iloc[:])):
-                            # normalized_gain = list(np.polyval(self.titration_df['normalized_gain'].iloc[i], self.titration_df['raw_voltages'].iloc[i]))
-                            # max_gain.append(np.max(normalized_gain))
-                            baseline = list(np.polyval(self.titration_df['baseline'].iloc[i],
-                                                       self.titration_df['raw_voltages'].iloc[i]))
-                            g = self.titration_df['peak_current'].iloc[i] - baseline[
-                                list(self.titration_df['raw_currents'].iloc[i]).index(
-                                    self.titration_df['peak_current'].iloc[i])]
+                            g = self.titration_df['peak_current'].iloc[i]
                             max_gain.append(g)
+                        # normalized
+                        first_peak_value = max_gain[0]
+                        max_gain = [x / first_peak_value for x in max_gain]
+                        max_gain = [(x-1)*100 for x in max_gain]
                         if self.isHill:
                             if concentration[concentration.index(self.plots.min_pt)] < concentration[
                                 concentration.index(self.plots.max_pt)]:
@@ -1150,8 +1228,19 @@ class App(tk.Tk):
                         ############################################### Voltammogram Graph ######################################
                         # try:
                         self.plots.volt_graph_data["raw_data"].set_data(
-                            self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N],
-                            self.raw_data_df['raw_currents'].iloc[self.datapoint_select_N])
+                            self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][25:],
+                            self.raw_data_df['raw_currents'].iloc[self.datapoint_select_N][25:])
+
+                        try:
+                            self.plots.volt_graph_data["smooth_data"].set_data(
+                                self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][25:],
+                                self.raw_data_df['smooth_data'].iloc[self.datapoint_select_N][25:])
+                            if len(self.plots.volt_graph_data["smooth_data"].get_xdata()) != len(self.plots.volt_graph_data["smooth_data"].get_ydata()):
+                                self.plots.volt_graph_data["smooth_data"].set_data([],[])
+                        except:
+                            print("No smooth data")
+
+
                         baseline = []
                         normalized_gain = []
                         for i in range(len(self.raw_data_df['raw_voltages'].iloc[:])):
@@ -1161,27 +1250,28 @@ class App(tk.Tk):
                                                                    self.raw_data_df['raw_voltages'].iloc[i])))
 
                         self.plots.volt_graph_data["baseline"].set_data(
-                            self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N],
-                            baseline[self.datapoint_select_N])
+                            self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][25:],
+                            baseline[self.datapoint_select_N][25:])
 
                         # self.plots.gain_data["Gain"].set_data(self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N],normalized_gain[self.datapoint_select_N])
 
                         # Red line to show peak on voltammogram
-                        index = normalized_gain[self.datapoint_select_N].index(
-                            max(normalized_gain[self.datapoint_select_N]))
+                        index = normalized_gain[self.datapoint_select_N].index(max(normalized_gain[self.datapoint_select_N]))
 
                         self.plots.volt_graph.set_xlim(
-                            self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][0],
+                            self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][25],
                             self.raw_data_df['raw_voltages'].iloc[self.datapoint_select_N][-1])
 
-                        max_raw_current = [max(raw_curr) for raw_curr in self.raw_data_df['raw_currents']]
-                        min_raw_current = [min(raw_curr) for raw_curr in self.raw_data_df['raw_currents']]
+
+                        max_raw_current = [max(raw_curr[25:]) for raw_curr in self.raw_data_df['raw_currents']]
+                        min_raw_current = [min(raw_curr[25:]) for raw_curr in self.raw_data_df['raw_currents']]
                         max_gain = [max(gain) for gain in normalized_gain]
                         min_gain = [min(gain) for gain in normalized_gain]
                         self.plots.gain_data['PeakX'].set_data(
                             [self.raw_data_df['peak_voltage'].iloc[self.datapoint_select_N],
                              self.raw_data_df['peak_voltage'].iloc[self.datapoint_select_N]],
                             [min(min_gain), max(max_gain)])
+
                         self.plots.volt_graph.set_ylim(min(min_raw_current), max(max_raw_current))
                         self.plots.gain.set_ylim(min(min_gain), max(max_gain))
 
@@ -1216,40 +1306,51 @@ class App(tk.Tk):
                             try:
                                 real_concentration = []
                                 _t = []
+                                first = True
                                 for i in range(len(self.raw_data_df['raw_voltages'].iloc[:])):
                                     # normalized_gain = list(np.polyval(self.raw_data_df['normalized_gain'].iloc[i], self.raw_data_df['raw_voltages'].iloc[i]))
                                     # maximum_gain = np.max(normalized_gain)
                                     #
                                     baseline = list(np.polyval(self.raw_data_df['baseline'].iloc[i],
                                                                self.raw_data_df['raw_voltages'].iloc[i]))
-                                    g = self.raw_data_df['peak_current'].iloc[i] - baseline[
-                                        list(self.raw_data_df['raw_currents'].iloc[i]).index(
-                                            self.raw_data_df['peak_current'].iloc[i])]
+                                    # g = self.raw_data_df['peak_current'].iloc[i] - baseline[
+                                    #     list(self.raw_data_df['raw_currents'].iloc[i]).index(
+                                    #         self.raw_data_df['peak_current'].iloc[i])]
+                                    g = self.raw_data_df['peak_current'].iloc[i] #- baseline[list(self.raw_data_df['raw_currents'].iloc[i]).index(self.raw_data_df['peak_current'].iloc[i])]
+
                                     maximum_gain = g
+
+                                    if first:
+                                        first_peak_value = maximum_gain
+                                        first = False
+                                    # normalized
+                                    maximum_gain = maximum_gain/first_peak_value
+                                    maximum_gain = (maximum_gain - 1)*100
 
                                     if self.isHill:
                                         top, bottom, ec50, nH = self.hf.params
                                         if bottom <= maximum_gain <= top:
-                                            if not np.isnan(ec50 * (
-                                                    ((bottom - maximum_gain) / (maximum_gain - top)) ** (1 / nH))):
-                                                real_concentration.append(ec50 * (
-                                                            ((bottom - maximum_gain) / (maximum_gain - top)) ** (
-                                                                1 / nH)))
+                                            if not np.isnan(ec50 * (((bottom - maximum_gain) / (maximum_gain - top)) ** (1 / nH))):
+                                                real_concentration.append(ec50 * (((bottom - maximum_gain) / (maximum_gain - top)) ** (1 / nH)))
                                                 _t.append(_time[i])
+                                        print("Max_gain :", maximum_gain)
+                                        print("Concentration :",ec50 * (((bottom - maximum_gain) / (maximum_gain - top)) ** (1 / nH)) )
                                     else:
                                         c = (maximum_gain - self.linear_coefs[1]) / self.linear_coefs[0]
                                         real_concentration.append(c)
                                         _t.append(_time[i])
-                                    if self.test_cBox.get() == 'SWV':
-                                        self.raw_data_df['concentration'].iloc[i] = real_concentration[-1]
 
+                                    if self.test_cBox.get() == 'SWV':
+                                        try:
+                                            self.raw_data_df['concentration'].iloc[i] = real_concentration[-1]
+                                        except IndexError:
+                                            pass
                                 if len(real_concentration) > 0:
                                     self.plots.rt_concentration.set_ylim(min(real_concentration),
                                                                          max(real_concentration))
                                     self.plots.rt_concentration.set_xlim(min(_t), max(_t))
                                     self.plots.rt_peak.set_xlim(min(_t), max(_t))
-                                    self.plots.rt_concentration_data["rt concentration"].set_data(_t,
-                                                                                                  real_concentration)
+                                    self.plots.rt_concentration_data["rt concentration"].set_data(_t,real_concentration)
 
                             except Exception:
                                 debug()
